@@ -6,8 +6,8 @@
 
   :repositories [["releases" {:url "https://clojars.org/repo"
                               :sign-releases false
-                              :username :env/clojars_username
-                              :password :env/clojars_password}]]
+                              :username :env/CLOJARS_USERNAME
+                              :password :env/CLOJARS_PASSWORD}]]
 
   :release-tasks [["vcs" "assert-committed"]
                   ["change" "version" "leiningen.release/bump-version" "release"]
