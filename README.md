@@ -10,6 +10,12 @@ A ClojureScript library allowing the consumer to create and manipulate any objec
 
 Using Figwheel in conjunction with the many ReactJS wrappers available has proven to be an amazing development experience. Rektify aims to enable stateless code reloading to be applied to any JS library's normally stateful object model.
 
+## Dependency Info
+
+### Leiningen/Boot
+
+[![Clojars Project](https://img.shields.io/clojars/v/dankreek/rektify.svg)](https://clojars.org/dankreek/rektify)
+
 ## Usage
 
 No usage docs yet. Coming soon! 
