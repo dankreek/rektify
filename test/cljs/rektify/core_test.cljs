@@ -142,6 +142,35 @@
 ;; XXX: extend-existing-graph-obj!
 ;; XXX: virtual-graph?
 
+(deftest re-rendering-second-children
+  ;; Reproduces bug #7
+  (let [g (rekt/reify-virtual-graph
+            (one-fish {}
+              (one-fish {}
+                (red-fish {}) (one-fish {:some-prop 0} (red-fish {:something [1 2 3]})))))
+        gz (fish-zip g)]
+
+    (testing "The reification worked"
+      (is (instance? classes/OneFish g))
+      (is (instance? classes/OneFish (-> gz z/down z/node)))
+      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
+      (is (instance? classes/OneFish (-> gz z/down z/down z/right z/node)))
+      (is (instance? classes/RedFish (-> gz z/down z/down z/right z/down z/node))))
+
+    (testing "Grandchildren are re-rendered"
+      (rekt/re-render-graph!
+        g (one-fish {}
+              (one-fish {}
+                (red-fish {}) (one-fish {:some-prop 2} (red-fish {:something [42 42 42]})))))
+      (is (instance? classes/OneFish g))
+      (is (instance? classes/OneFish (-> gz z/down z/node)))
+      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
+      (is (instance? classes/OneFish (-> gz z/down z/down z/right z/node)))
+      (is (instance? classes/RedFish (-> gz z/down z/down z/right z/down z/node)))
+
+      (is (= 2 (.-someProp (-> gz z/down z/down z/right z/node))))
+      (is (= 42 (.-x (-> gz z/down z/down z/right z/down z/node)))))))
+
 (deftest single-object-construction
   (testing "An object with no constructor list can be created with the default constructor"
     (is (instance? classes/OneFish (rekt/new-object one-fish-desc))))
@@ -265,7 +294,7 @@
           (is (= true (.isDestroyed o)))))))
 
   (testing "Create a tree"
-    (let [o (rekt/re-render-graph! nil (one-fish {} (red-fish) (blue-fish)))]
+    (let [o (rekt/reify-virtual-graph (one-fish {} (red-fish) (blue-fish)))]
       (is (= false (.-someProp o)))
       (is (= 2 (count (.getChildren o))))
       (let [children (.getChildren o)
@@ -282,6 +311,12 @@
             (is (instance? classes/RedFish second-red-fish))
             (is (= true (.isDestroyed new-blue-fish))
                 "The BlueFish was destroyed after being removed from the graph and replaced")
+            (testing "modify a child's properties"
+              (rekt/re-render-graph! o (one-fish {} (red-fish) (red-fish {:something [4 5 6]})))
+              (is (= second-red-fish (-> (fish-zip o) z/down z/right z/node)))
+              (is (= 4 (.-x second-red-fish)))
+              (is (= 5 (.-y second-red-fish)))
+              (is (= 6 (.-z second-red-fish))))
             (testing "then remove a node"
               (is (= o (rekt/re-render-graph! o (one-fish {} (red-fish)))))
               (is (= 1 (count (.getChildren o))))
@@ -335,6 +370,8 @@
         (is (= true (.isDestroyed old-red-fish)))
         (is (= true (.isDestroyed old-blue-fish1)))
         (is (= true (.isDestroyed old-blue-fish2)))))))
+
+
 
 (deftest manipulate-generated-graph
   (testing "A generator creates a new virtual graph"

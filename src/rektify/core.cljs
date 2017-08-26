@@ -651,6 +651,14 @@ the provided object."
         (-get-virtual-graph graph))
       new-v-graph)))
 
+(defn pp-v-graph
+  [v-graph]
+  (let [const (:constructor (virtual-node-type-desc v-graph))]
+    [(first v-graph)
+     (when const (.-name const))
+     (virtual-node-props v-graph)
+     (mapv pp-v-graph (virtual-node-children v-graph))]))
+
 (defn- apply-virtual-node-diff
   [graph init-new-v-graph graph-parent parent-child-index]
   (let [cur-v-graph (when graph (-get-virtual-graph graph))
@@ -722,6 +730,7 @@ the provided object."
 
 (defn- apply-virtual-graph!*
   [graph new-v-graph]
+  (assert (nil? **apply-graph-stack*))
   (binding [**apply-graph-stack* (atom [])]
     (let [head-parent (-get-parent graph)
           head-child-index (when head-parent (-child-index head-parent graph))
@@ -734,8 +743,9 @@ the provided object."
                     next-graph :graph
                     next-new-v-graph :new-v-graph}
                    (peek @**apply-graph-stack*)]
-          (apply-virtual-node-diff next-graph next-new-v-graph graph-parent parent-child-index)
+          (peek @**apply-graph-stack*)
           (swap! **apply-graph-stack* pop)
+          (apply-virtual-node-diff next-graph next-new-v-graph graph-parent parent-child-index)
           (recur)))
       head)))
 
