@@ -252,6 +252,15 @@
       (is (instance? classes/RedFish (aget children 0)))
       (is (instance? classes/BlueFish (aget children 1)))))
 
+  (testing "Siblings render in order"
+    (let [g (rekt/reify-virtual-graph
+              (one-fish {}
+                        (red-fish) (blue-fish) (one-fish)))
+          zg (fish-zip g)]
+      (is (instance? classes/RedFish (-> zg z/down z/node)))
+      (is (instance? classes/BlueFish (-> zg z/down z/right z/node)))
+      (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node)))))
+
   (testing "Create an object from a generator"
     (let [g {:render #(one-fish)}
           head-node (rekt/re-render-graph!
@@ -327,6 +336,26 @@
                 (is (= 2 (count (.getChildren o))))
                 (is (instance? classes/RedFish (.getChildAt o 0)))
                 (is (instance? classes/BlueFish (.getChildAt o 1))))))))))
+
+  (testing "New siblings render in order"
+    (let [g (rekt/reify-virtual-graph
+              (one-fish))
+          zg (fish-zip (rekt/re-render-graph!
+                          g (one-fish {} (red-fish) (blue-fish) (one-fish))))]
+      (is (instance? classes/RedFish (-> zg z/down z/node)))
+      (is (instance? classes/BlueFish (-> zg z/down z/right z/node)))
+      (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node)))
+
+      (testing "and re-render in order"
+        (rekt/re-render-graph!
+          g (one-fish {} (red-fish) (blue-fish) (one-fish)))
+        (is (instance? classes/RedFish (-> zg z/down z/node)))
+        (is (instance? classes/BlueFish (-> zg z/down z/right z/node)))
+        (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node))))
+
+      (testing "and can be removed"
+        (rekt/re-render-graph!
+          g (one-fish)))))
 
   (testing "A tree is destroyed and replaced when the head node's type changes"
     (let [g0 (rekt/re-render-graph! nil (one-fish {} (red-fish) (blue-fish)))
@@ -497,6 +526,7 @@
                               "The object is not destroyed yet")
                           (swap! *cleanup-order conj :a))}
         v-graph #(rekt/generator-v-node gen-a %)]
+
     (testing "Generator life cycle functions are called in the correct order"
       (let [g (rekt/re-render-graph! nil (v-graph {}))
             zg (fish-zip g)]
@@ -516,7 +546,7 @@
 
           (testing "it re-renders in correct order when it receives new props"
             (rekt/re-render-graph! g (v-graph {:poop "stewart"}))
-            (is (= [:a :c :b] @*generate-order))
+            (is (= [:a :b :c] @*generate-order))
 
             (testing "and the correct head object references are passed in"
               (is (= g @*gen-a-head))

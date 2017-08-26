@@ -168,6 +168,15 @@
   (= ::generator (first virtual-node)))
 
 
+(defn pp-v-graph
+  [v-graph]
+  (let [const (:constructor (virtual-node-type-desc v-graph))]
+    [(first v-graph)
+     (when const (.-name const))
+     (virtual-node-props v-graph)
+     (mapv pp-v-graph (virtual-node-children v-graph))]))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IObject contains methods for property and child accessors and mutators
 
@@ -575,7 +584,7 @@ the provided object."
 
 
 (defn- reify-virtual-graph-level
-  "Reducer for `reify-virtual-graph `which reifies the v-node, attaches it the
+  "Reducer for `reify-virtual-graph` which reifies the v-node, attaches it the
   given parent and, if the new node has children, adds them to the queue."
   [parent queue v-node]
   (let [node (reify-virtual-node v-node)
@@ -590,9 +599,9 @@ the provided object."
   ([v-graph]
    (let [head (reify-virtual-node v-graph)]
      (loop [node-queue #queue [[head (virtual-node-children (-get-virtual-graph head))]]]
-       (let [[parent v-children] (first node-queue)
+       (let [[parent v-children] (peek node-queue)
              next-queue (reduce (partial reify-virtual-graph-level parent)
-                                (rest node-queue)
+                                (pop node-queue)
                                 v-children)]
          (when (seq next-queue) (recur next-queue))))
      head)))
@@ -618,25 +627,53 @@ the provided object."
    nil))
 
 
-(def ^:no-doc ^:dynamic **apply-graph-stack*
+(def ^:no-doc ^:dynamic **apply-graph-queue*
   "This is used during the process of applying a new virtual graph to an
-  existing graph. A stack is used to ensure children are removed from the end
-  first, due to a dependence on using `remove-child-at! `."
+  existing graph."
   nil)
 
 
-(defn- add-children-to-stack!
+(defn- truncate-children!
+  "Truncate the given node's child list down to the size specified and update
+  the v-node to reflect the new child list."
+  [node new-child-size]
+  (let [children (-get-children node)
+        child-count (count children)]
+    (loop [i (dec child-count)]
+      (when (>= i new-child-size)
+        (destroy-graph! (nth children i) node i)
+        (recur (dec i))))
+    (-set-virtual-graph-children!
+      node (drop-last (- child-count new-child-size) (virtual-node-children (-get-virtual-graph node))))
+    children))
+
+
+(defn- process-children!
+  ;; TODO: Add ID matching here later (Issue #2)
+  "If the new virtual child list is short than the old child list, truncate the
+  old graph."
+  [graph v-node-children]
+  (let [graph-children (-get-children graph)
+        graph-child-count (count graph-children)
+        new-v-child-count (count v-node-children)]
+    (if (<= graph-child-count new-v-child-count)
+      graph-children
+      (truncate-children! graph new-v-child-count))))
+
+
+(defn- add-children-to-queue!
   [graph new-v-graph]
   (let [v-node-children (virtual-node-children new-v-graph)
-        graph-children (-get-children graph)
-        child-count (max (count v-node-children) (count graph-children))]
+        graph-children (process-children! graph v-node-children)
+        child-count (count v-node-children)]
     (loop [i 0]
       (when (< i child-count)
-        (swap! **apply-graph-stack* conj {:graph (nth graph-children i nil)
+        (swap! **apply-graph-queue* conj {:graph (nth graph-children i nil)
                                           :new-v-graph (nth v-node-children i nil)
                                           :graph-parent graph
                                           :parent-child-index i})
         (recur (inc i))))))
+
 
 (defn- resolve-generator-obj
   "If the graph has a generator of the same type as the new v-graph then
@@ -650,14 +687,6 @@ the provided object."
         (-generate-virtual-graph graph new-props)
         (-get-virtual-graph graph))
       new-v-graph)))
-
-(defn pp-v-graph
-  [v-graph]
-  (let [const (:constructor (virtual-node-type-desc v-graph))]
-    [(first v-graph)
-     (when const (.-name const))
-     (virtual-node-props v-graph)
-     (mapv pp-v-graph (virtual-node-children v-graph))]))
 
 (defn- apply-virtual-node-diff
   [graph init-new-v-graph graph-parent parent-child-index]
@@ -683,7 +712,7 @@ the provided object."
       (virtual-node= new-v-graph cur-v-graph)
       (do
         (-set-virtual-graph-children! graph (virtual-node-children new-v-graph))
-        (add-children-to-stack! graph new-v-graph)
+        (add-children-to-queue! graph new-v-graph)
         graph)
 
       ;; The new virtual node is the same type as the current, so update the
@@ -692,7 +721,7 @@ the provided object."
       (do
         (apply-props! graph (virtual-node-props new-v-graph))
         (-set-virtual-graph-children! graph (virtual-node-children new-v-graph))
-        (add-children-to-stack! graph new-v-graph)
+        (add-children-to-queue! graph new-v-graph)
         graph)
 
       ;; The two virtual graph types are different, create the new and replace the old
@@ -721,7 +750,7 @@ the provided object."
               new-v-graph (-get-generator-virtual-graph graph)
               graph-parent (-get-parent graph)
               parent-child-index (when graph-parent (-child-index graph-parent graph))]
-          (swap! **apply-graph-stack* conj {:graph graph
+          (swap! **apply-graph-queue* conj {:graph graph
                                             :new-v-graph new-v-graph
                                             :graph-parent graph-parent
                                             :parent-child-index parent-child-index})
@@ -730,21 +759,21 @@ the provided object."
 
 (defn- apply-virtual-graph!*
   [graph new-v-graph]
-  (assert (nil? **apply-graph-stack*))
-  (binding [**apply-graph-stack* (atom [])]
+  (assert (nil? **apply-graph-queue*))
+  (binding [**apply-graph-queue* (atom #queue [])]
     (let [head-parent (-get-parent graph)
           head-child-index (when head-parent (-child-index head-parent graph))
           head (apply-virtual-node-diff graph new-v-graph head-parent head-child-index)]
       (loop []
         ;; Add all the dirty generators into the re-render stack
-        (when (not (seq @**apply-graph-stack*))
+        (when (not (seq @**apply-graph-queue*))
           (add-dirty-generators!))
         (when-let [{:keys [graph-parent parent-child-index]
                     next-graph :graph
                     next-new-v-graph :new-v-graph}
-                   (peek @**apply-graph-stack*)]
-          (peek @**apply-graph-stack*)
-          (swap! **apply-graph-stack* pop)
+                   (peek @**apply-graph-queue*)]
+          (peek @**apply-graph-queue*)
+          (swap! **apply-graph-queue* pop)
           (apply-virtual-node-diff next-graph next-new-v-graph graph-parent parent-child-index)
           (recur)))
       head)))
