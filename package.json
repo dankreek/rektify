@@ -1,0 +1,30 @@
+{
+  "name": "rektify",
+  "version": "0.0.4-SNAPSHOT",
+  "description": "ClojureScript library to manipulate any JS object model in a declarative way.",
+  "main": "index.js",
+  "author": "Justin May",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "karma": "^1.7.1"
+  },
+  "devDependencies": {
+    "karma": "^1.7.1",
+    "karma-chrome-launcher": "^2.2.0",
+    "karma-cljs-test": "^0.1.0"
+  },
+  "scripts": {
+    "test": "lein test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dankreek/rektify.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dankreek/rektify/issues"
+  },
+  "homepage": "https://github.com/dankreek/rektify#readme"
+}
