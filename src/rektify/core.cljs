@@ -270,6 +270,10 @@ regenerated.")
     [this]
     "Get the generator virtual graph (not the object's virtual graph).")
 
+  (-get-generator-desc
+    [this]
+    "Get this generator's description.")
+
   (-cleanup-generator
     [this]
     "If this generator has a cleanup function call it"))
@@ -423,7 +427,7 @@ the provided object."
 
 
 (defn- extend-with-generator!
-  [obj gen-type props resolved-gen-map]
+  [obj gen-desc props resolved-gen-map]
   (let [*dirty? (atom false)
         *props (atom props)]
     (specify! obj
@@ -445,12 +449,14 @@ the provided object."
             v-graph)))
 
       ;; TODO: there's very possibly a memory leak here, since closures will enclose each other
-      ;; will be fixed once generators are their own objects
+      ;; will be fixed once generators are their own object trees
       (-copy-generator
         [this other-obj]
-        (extend-with-generator! other-obj gen-type @*props resolved-gen-map))
+        (extend-with-generator! other-obj gen-desc @*props resolved-gen-map))
 
-      (-get-generator-virtual-graph [this] [::generator gen-type @*props])
+      (-get-generator-virtual-graph [this] [::generator gen-desc @*props])
+
+      (-get-generator-desc [this] gen-desc)
 
       (-cleanup-generator [this]
         (unregister-generator-obj! this)
@@ -650,8 +656,8 @@ the provided object."
 
 (defn- process-children!
   ;; TODO: Add ID matching here later (Issue #2)
-  "If the new virtual child list is short than the old child list, truncate the
-  old graph."
+  "If the new virtual child list is shorter than the old child list, truncate
+  the old graph."
   [graph v-node-children]
   (let [graph-children (-get-children graph)
         graph-child-count (count graph-children)
@@ -677,19 +683,21 @@ the provided object."
 
 (defn- resolve-generator-obj
   "If the graph has a generator of the same type as the new v-graph then
-  generate a new v-graph if the generator needs re-rerendering "
+  generate a new v-graph if the generator needs re-rendering "
   [graph new-v-graph]
   (let [new-props (virtual-node-props new-v-graph)]
     (if (and (virtual-node-is-generator? new-v-graph)
              (satisfies? IGenerator graph)
-             (virtual-node-type-desc new-v-graph))
+             (= (virtual-node-type-desc new-v-graph) (-get-generator-desc graph)))
       (if (-regenerate? graph new-props)
         (-generate-virtual-graph graph new-props)
         (-get-virtual-graph graph))
       new-v-graph)))
 
+
 (defn- apply-virtual-node-diff
   [graph init-new-v-graph graph-parent parent-child-index]
+  ;; TODO: Define -get-virtual-graph on the default object and return nil
   (let [cur-v-graph (when graph (-get-virtual-graph graph))
         new-v-graph (resolve-generator-obj graph init-new-v-graph)]
     (cond
@@ -708,7 +716,7 @@ the provided object."
       (nil? new-v-graph)
       (destroy-graph! graph graph-parent parent-child-index)
 
-      ;; The nodes and properties are the same but there are children that need updates
+      ;; The node's type and properties are the same but there are children that need updates
       (virtual-node= new-v-graph cur-v-graph)
       (do
         (-set-virtual-graph-children! graph (virtual-node-children new-v-graph))
@@ -736,6 +744,7 @@ the provided object."
 
       :default
       (throw (js/Error. "This situation can not be dealt with. This is a bug.")))))
+
 
 
 (defn- add-dirty-generators!
@@ -843,6 +852,7 @@ the provided object."
   ([cur-graph new-virtual-graph *state]
    (assert (or (nil? *state) (map? @*state))
            "The state must be either nil or a reference to a map")
+   ;; XXX: Check to see if a valid virtual graph was passed in
    (binding [*prev-state* (when *state @*state)
              **cur-state* *state]
      (dirty-generators! *prev-state*)

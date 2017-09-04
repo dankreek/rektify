@@ -401,7 +401,6 @@
         (is (= true (.isDestroyed old-blue-fish2)))))))
 
 
-
 (deftest manipulate-generated-graph
   (testing "A generator creates a new virtual graph"
     (let [*render-props (atom [])
@@ -488,7 +487,28 @@
           (is (= 0 (count (.getChildren o))))
           (is (= 0 (count (.getChildren old-red-fish))))
           (is (= true (.isDestroyed old-red-fish)))
-          (is (= true (.isDestroyed old-blue-fish))))))))
+          (is (= true (.isDestroyed old-blue-fish)))))))
+
+  (testing "A new generator creates a new graph in place of the old one"
+    (let [gen1 {:render #(one-fish {}
+                                   (red-fish) (blue-fish))}
+          gen2 {:render #(one-fish {} (red-fish))}
+          g (rekt/reify-virtual-graph
+              (one-fish {} (rekt/generator-v-node gen1 {:a 1})))
+          gz (fish-zip g)]
+      (is (instance? classes/OneFish g))
+      (is (instance? classes/OneFish (-> gz z/down z/node)))
+      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
+      (is (instance? classes/BlueFish (-> gz z/down z/down z/right z/node)))
+
+      (let [new-g (rekt/re-render-graph!
+                    g (one-fish {} (rekt/generator-v-node gen2 {:b 3})))]
+        (is (= g new-g)
+            "The re-rendered graph's root remains the same")
+        (is (instance? classes/OneFish g))
+        (is (instance? classes/OneFish (-> gz z/down z/node)))
+        (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
+        (is (= 1 (count (.getChildren (-> gz z/down z/node)))))))))
 
 (deftest generator-life-cycle-functions
   (let [*generate-order (atom [])
@@ -572,6 +592,7 @@
 
 (deftest generators-with-global-state
   (testing "a single generator"
+    (swap! rekt/*generator-registry {})
     (let [*state (atom {:a 0})
           *state-history (atom [])
           *cleaned-up (atom false)
