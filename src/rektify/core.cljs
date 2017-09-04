@@ -486,7 +486,8 @@ the provided object."
             (get default-props prop))))
       (apply-props! [this new-props]
         (swap! *props apply-new-props! new-props this prop-map default-props))
-      (destroy! [this] (post-constructor obj)))
+      (destroy! [this]
+        (when destructor (destructor this))))
     (when post-constructor (post-constructor obj))
     obj))
 
