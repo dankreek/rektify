@@ -495,20 +495,26 @@
           gen2 {:render #(one-fish {} (red-fish))}
           g (rekt/reify-virtual-graph
               (one-fish {} (rekt/generator-v-node gen1 {:a 1})))
-          gz (fish-zip g)]
+          gz (fish-zip g)
+          of-0 (-> gz z/down z/node)
+          rf-0 (-> gz z/down z/down z/node)
+          bf-0 (-> gz z/down z/down z/right z/node)]
       (is (instance? classes/OneFish g))
-      (is (instance? classes/OneFish (-> gz z/down z/node)))
-      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
-      (is (instance? classes/BlueFish (-> gz z/down z/down z/right z/node)))
+      (is (instance? classes/OneFish of-0))
+      (is (instance? classes/RedFish rf-0))
+      (is (instance? classes/BlueFish bf-0))
 
       (let [new-g (rekt/re-render-graph!
-                    g (one-fish {} (rekt/generator-v-node gen2 {:b 3})))]
-        (is (= g new-g)
-            "The re-rendered graph's root remains the same")
-        (is (instance? classes/OneFish g))
-        (is (instance? classes/OneFish (-> gz z/down z/node)))
-        (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
-        (is (= 1 (count (.getChildren (-> gz z/down z/node)))))))))
+                    g (one-fish {} (rekt/generator-v-node gen2 {:b 3})))
+            of-1 (-> gz z/down z/node)
+            rf-1 (-> gz z/down z/down z/node)]
+        (is (= g new-g) "The re-rendered graph's root remains the same")
+        (is (= of-1 of-0) "The re-rendered graph's first child remains the same")
+        (is (= rf-1 rf-0) "The re-rendered graph's grandchild remains the same")
+        (is (= true (.isDestroyed bf-0)) "The removed child was destroyed")
+        (is (instance? classes/OneFish of-1))
+        (is (instance? classes/RedFish rf-1))
+        (is (= 1 (count (.getChildren of-1))))))))
 
 (deftest generator-life-cycle-functions
   (let [*generate-order (atom [])

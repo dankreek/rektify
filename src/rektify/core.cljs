@@ -426,6 +426,21 @@ the provided object."
      v-graph)))
 
 
+(defn- resolve-generator
+  "Creates a function map from a generator description. If the description is a
+  function then it is called and the resulting generator map is returned,
+  otherwise the map itself is just returned "
+  [gen-desc]
+  (let [result-gen-desc (if (fn? gen-desc)
+                          (gen-desc)
+                          gen-desc)]
+    (assert (valid-generator-map? result-gen-desc)
+            (str "A generator description must be either a function that returns "
+                 "a map with a :render function, or a map with a :render function."))
+    result-gen-desc))
+
+
+
 (defn- extend-with-generator!
   [obj gen-desc props resolved-gen-map]
   (let [*dirty? (atom false)
@@ -556,20 +571,6 @@ the provided object."
     (extend-graph-obj! new-obj v-node)))
 
 
-(defn- resolve-generator
-  "Creates a function map from a generator description. If the description is a
-  function then it is called and the resulting generator map is returned,
-  otherwise the map itself is just returned "
-  [gen-desc]
-  (let [result-gen-desc (if (fn? gen-desc)
-                          (gen-desc)
-                          gen-desc)]
-    (assert (valid-generator-map? result-gen-desc)
-            (str "A generator description must be either a function that returns "
-                 "a map with a :render function, or a map with a :render function."))
-    result-gen-desc))
-
-
 (defn- new-generator-object
   [v-node]
   (binding [*observed-key-paths* (transient {})]
@@ -687,12 +688,20 @@ the provided object."
   generate a new v-graph if the generator needs re-rendering "
   [graph new-v-graph]
   (let [new-props (virtual-node-props new-v-graph)]
+    ;; If the graph was made by a generator and the v-graph is a generator
     (if (and (virtual-node-is-generator? new-v-graph)
-             (satisfies? IGenerator graph)
-             (= (virtual-node-type-desc new-v-graph) (-get-generator-desc graph)))
-      (if (-regenerate? graph new-props)
-        (-generate-virtual-graph graph new-props)
-        (-get-virtual-graph graph))
+             (satisfies? IGenerator graph))
+      (do
+        (when (not= (virtual-node-type-desc new-v-graph)
+                    (-get-generator-desc graph))
+          ;; TODO: This a barfy hack until generators are straightened out
+          (let [new-gen-desc (virtual-node-type-desc new-v-graph)
+                new-gen-map (resolve-generator new-gen-desc)]
+            (extend-with-generator! graph new-gen-desc new-props new-gen-map)
+            (-set-dirty graph)))
+        (if (-regenerate? graph new-props)
+           (-generate-virtual-graph graph new-props)
+           (-get-virtual-graph graph)))
       new-v-graph)))
 
 
