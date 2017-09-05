@@ -202,6 +202,16 @@
       (is (= true (.-someProp o)))
       (is (= true (rekt/get-object-prop o :some-prop)))))
 
+  (testing "A property which is set to false is applied"
+    (let [o (rekt/new-object two-fish-desc {:in-the-beginning "a"
+                                            :and-then "b"})]
+      (is (= "a" (.-first o)))
+      (is (= "b" (.-second o)))
+      (rekt/apply-props! o {:in-the-beginning false
+                            :and-then false})
+      (is (= false (.-first o)))
+      (is (= false (.-second o)))))
+
   (testing "A composite property can be set and got"
     (let [o (rekt/new-object red-fish-desc)]
       (is (= [0 1 -1] (rekt/get-object-prop o :something))
@@ -297,6 +307,9 @@
         (rekt/re-render-graph! o (one-fish {:some-prop true}))
         (is (= true (.-someProp o))
             "`someProp` was mutated and the object is the same instance"))
+      (testing "and set a prop to false"
+        (rekt/re-render-graph! o (one-fish {:some-prop false}))
+        (is (= false (.-someProp o))))
       (testing "and destroy it"
         (let [o2 (rekt/re-render-graph! o nil)]
           (is (nil? o2))

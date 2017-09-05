@@ -337,35 +337,32 @@ the provided object."
   (setter obj property val))
 
 
-(defn- apply-new-prop!
-  [prev-val new-val obj prop-config default-val]
-  (let [new-val-or-default (or new-val default-val)]
-    (if (not= prev-val new-val-or-default)
-      (apply-prop! obj new-val-or-default prop-config)
-      new-val)))
-
-
+;; TODO: This could be a lot smarter and faster
 (defn- apply-new-props!
   "Returns the new property map"
   [prev-props new-props obj prop-map default-props]
   (when (not= prev-props new-props)
-    (loop [props (set/union (set (keys new-props)) (keys prev-props))]
-      (when-some [prop (first props)]
-        (when (not (contains? prop-map prop))
-          (throw (js/Error.
-                   (str "Could not find property config for the property: " prop))))
-        (try
-          (apply-new-prop!
-            (get prev-props prop)
-            (get new-props prop)
-            obj
-            (get prop-map prop)
-            (get default-props prop))
-          (catch :default e
-            (set! (.-message e) (str "Error applying properties " new-props
-                                     "in property " prop ", " (.-message e)))
-            (throw e)))
-        (recur (rest props)))))
+    ;; Set all provided props
+    (loop [props (seq new-props)]
+      (when (seq props)
+        (let [[key val] (first props)
+              prop-config (get prop-map key nil)]
+          (assert (not (nil? prop-config))
+                  (str "Could not find property config for the property: " key))
+          (when (not= val (get prev-props key))
+            (apply-prop! obj val prop-config))
+          (recur (rest props)))))
+
+    ;; Set default values for all props that are no longer present
+    (loop [props (set/difference (set (keys prev-props)) (set (keys new-props)))]
+      (when (seq props)
+        (let [key (first props)
+              default-val (get default-props key nil)]
+          (assert (contains? default-props key)
+                  (str "A value for the property " key " is required to be set since it doesn't have a default"))
+          (when (not= default-val (get prev-props key))
+            (apply-prop! obj default-val (get prop-map key)))
+          (recur (rest props))))))
   new-props)
 
 
