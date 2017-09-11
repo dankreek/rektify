@@ -200,23 +200,27 @@
     [this]
     "Perform all clean-up operations needed to destroy this object."))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; IHasVirtualGraph
+
+(defprotocol IHasVirtualGraph
+  (-get-virtual-graph
+    [this]
+    "Return this node's virtual graph")
+
+  (-set-virtual-graph-children!
+    [this new-v-graph-children]
+    "Update the children of the virtual graph, in the case where this node
+    doesn't need to be updated, but its children do."))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IGraphNode - Methods needed for creating and diffing graphs of objects
 
 (defprotocol ^:no-doc IGraphNode
-  (-get-virtual-graph
-    [this]
-    "Return this node's virtual graph")
-
   (-get-children
     [this]
     "Get the list of children of this object.")
-
-  (-set-virtual-graph-children!
-    [this new-v-graph-children]
-    "Update the children of the virtual graph, in the case where this node
-doesn't need to be updated, but its children do.")
 
   (-get-parent
     [this]
@@ -394,10 +398,12 @@ the provided object."
       (destroy! [this]
         (when destructor (destructor this)))
 
-      IGraphNode
+      IHasVirtualGraph
+      (-get-virtual-graph [this] @*v-graph)
       (-set-virtual-graph-children! [this new-v-graph-children]
         (swap! *v-graph update-virtual-node-children new-v-graph-children))
-      (-get-virtual-graph [this] @*v-graph)
+
+      IGraphNode
       (-get-parent [this]
         (get-parent-fn this))
       (-add-child! [this child]
