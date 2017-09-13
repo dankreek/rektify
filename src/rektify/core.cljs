@@ -858,7 +858,13 @@ the provided object."
   "Is the provided `virtual-graph` a valid virtual graph?"
   [virtual-graph]
   (and (vector? virtual-graph)
-       (keyword? (first virtual-graph))
-       (map? (second virtual-graph))))
+       (let [node-type (first virtual-graph)
+             type-desc (second virtual-graph)
+             props (nth virtual-graph 2 nil)
+             children (nth virtual-graph 3 nil)]
+         (and (keyword? node-type)
+              (map? type-desc)
+              (map? props)
+              (or (nil? children) (seq? children))))))
 
 
