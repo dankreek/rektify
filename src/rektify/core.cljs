@@ -1,5 +1,6 @@
 (ns rektify.core
-  (:require [clojure.set :as set]
+  (:require [rektify.validation :as v]
+            [clojure.set :as set]
             [clojure.string :as str]))
 
 ;; TODO: Make generators their own trees of objects, and remove this hack
@@ -8,117 +9,21 @@
   generator render call."
   nil)
 
+
 (def ^:no-doc ^:dynamic **cur-state*
   "The state atom for the render cycle. All state updates will go here, but will
   not be reflected until next render."
   nil)
 
+
 (def ^:no-doc ^:dynamic *prev-state*
   "The contents of the state atom before the render cycle starts."
   nil)
 
+
 ;; A map of generators -> a list of all the state paths they are listening to.
 (defonce ^:no-doc *generator-registry (atom {}))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Constants
-
-(def required-generator-life-cycles
-  #{:render})
-
-
-(def optional-generator-life-cycles
-  #{:cleanup})
-
-
-(def valid-generator-map-keys
-  (set/union required-generator-life-cycles
-             optional-generator-life-cycles))
-
-
-(def required-obj-desc-keys
-  #{:get-parent
-    :add-child
-    :child-index
-    :replace-child-at
-    :remove-child-at
-    :get-children
-    :constructor
-    :prop-map})
-
-
-(def optional-obj-desc-keys
-  #{:default-props
-    :constructor-list
-    :post-constructor
-    :destructor})
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Parameter validator functions
-
-(def ^:no-doc valid-obj-desc-keys
-  (set/union required-obj-desc-keys optional-obj-desc-keys))
-
-
-(defn- required-map-keys?
-  "Check that all keys in the `required-key-set `are in the given `key-set `."
-  [required-key-set m]
-  (= required-key-set (set/intersection (set (keys m)) required-key-set)))
-
-
-(def ^:no-doc required-object-desc-keys?
-  (partial required-map-keys? required-obj-desc-keys))
-
-
-(def ^:no-doc required-generator-desc-keys?
-  (partial required-map-keys? required-generator-life-cycles))
-
-
-(defn- missing-required-keys
-  [required-key-set m]
-  (set/difference required-key-set (set (keys m))))
-
-
-(def ^:no-doc missing-required-object-desc-keys
-  (partial missing-required-keys required-obj-desc-keys))
-
-
-(def ^:no-doc missing-required-generator-desc-keys
-  (partial missing-required-keys required-generator-life-cycles))
-
-
-(defn- valid-keys?
-  "Check that all keys in `key-set `are in the `valid-key-set `."
-  [valid-key-set m]
-  (set/subset? (set (keys m)) valid-key-set))
-
-
-(def ^:no-doc valid-object-desc-keys?
-  (partial valid-keys? valid-obj-desc-keys))
-
-
-(defn- invalid-keys
-  "Return the set of keys in the given map that are not valid"
-  [valid-key-set m]
-  (set/difference (set (keys m)) valid-key-set))
-
-
-(def ^:no-doc invalid-generator-desc-keys
-  (partial invalid-keys required-generator-life-cycles))
-
-
-(def ^:no-doc invalid-object-desc-keys
-  (partial invalid-keys valid-obj-desc-keys))
-
-
-(def ^:no-doc valid-generator-map?
-  (partial valid-keys? valid-generator-map-keys))
-
-
-(defn- pp-set
-  "Pretty print the set"
-  [s]
-  (str/join ", " s))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Virtual graph functions
@@ -440,7 +345,7 @@ the provided object."
   (let [result-gen-desc (if (fn? gen-desc)
                           (gen-desc)
                           gen-desc)]
-    (assert (valid-generator-map? result-gen-desc)
+    (assert (v/valid-generator-map? result-gen-desc)
             (str "A generator description must be either a function that returns "
                  "a map with a :render function, or a map with a :render function."))
     result-gen-desc))
@@ -908,12 +813,12 @@ the provided object."
   ([object-desc props]
    (object-v-node object-desc props []))
   ([object-desc props children]
-   (assert (required-object-desc-keys? object-desc)
+   (assert (v/required-object-desc-keys? object-desc)
            (str "The object description map is missing the following required keys: "
-                (pp-set (missing-required-object-desc-keys object-desc))))
-   (assert (valid-object-desc-keys? object-desc)
+                (v/pp-set (v/missing-required-object-desc-keys object-desc))))
+   (assert (v/valid-object-desc-keys? object-desc)
            (str "The object description map contains the following invalid keys: "
-                (pp-set (invalid-object-desc-keys object-desc))))
+                (v/pp-set (v/invalid-object-desc-keys object-desc))))
    [::object object-desc props children]))
 
 
@@ -923,12 +828,12 @@ the provided object."
   ([gen-desc]
    (generator-v-node gen-desc {}))
   ([gen-desc props]
-   (assert (required-generator-desc-keys? gen-desc)
+   (assert (v/required-generator-desc-keys? gen-desc)
            (str "The generator description map is missing the following required keys: "
-                (pp-set (missing-required-generator-desc-keys gen-desc))))
-   (assert (valid-generator-map? gen-desc)
+                (v/pp-set (v/missing-required-generator-desc-keys gen-desc))))
+   (assert (v/valid-generator-map? gen-desc)
            (str "The object description map contains the following invalid keys: "
-                (pp-set (invalid-generator-desc-keys gen-desc))))
+                (v/pp-set (v/invalid-generator-desc-keys gen-desc))))
    [::generator gen-desc props nil]))
 
 
