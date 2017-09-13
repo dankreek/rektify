@@ -850,6 +850,7 @@ the provided object."
   "Extends the provided graph object with the given prop-map. The graph should
   not have any children."
   [graph object-desc]
+  (js/console.warn "extend-existing-graph-obj! does not currently consider children.")
   (let [props (get-existing-object-properties graph (:prop-map object-desc))]
     (extend-graph-obj! graph (object-v-node object-desc props))))
 
