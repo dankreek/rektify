@@ -178,46 +178,48 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IObject contains methods for property and child accessors and mutators
+;; Protocols
 
-(defprotocol IObject
-  (get-object-props
+(defprotocol IHasProperties
+  "Methods for object property accessors and mutators"
+
+  (get-props
     [this]
     "Return the props currently set on this object.")
 
-  (get-object-prop
+  ;; TODO: The explicit prop should be used first, then a getter, than a default
+  (get-prop
     [this prop]
     "Return the current value of the given property for this object. If the
     property has not been explicitly applied, its default value will be
     returned.")
 
-  (apply-props!
+  (set-props
     [this props]
     "Apply the given map of properties to the object. Returns the property map.
     This will change this object's virtual graph.")
 
-  (destroy!
+  (destroy
     [this]
     "Perform all clean-up operations needed to destroy this object."))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IHasVirtualGraph
 
-(defprotocol IHasVirtualGraph
+(defprotocol ^:no-doc IHasVirtualGraph
+  "Methods for types which can be represented by a virtual graph."
+
   (-get-virtual-graph
     [this]
     "Return this node's virtual graph")
 
-  (-set-virtual-graph-children!
+  (-set-virtual-graph-children
     [this new-v-graph-children]
     "Update the children of the virtual graph, in the case where this node
     doesn't need to be updated, but its children do."))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IGraphNode - Methods needed for creating and diffing graphs of objects
-
 (defprotocol ^:no-doc IGraphNode
+  "Methods for types which are members of a graph."
+
   (-get-children
     [this]
     "Get the list of children of this object.")
@@ -240,27 +242,27 @@
 
   (-remove-child-at!
     [this index]
-    "Remove the child of this object at the given index. Return the child
-object that was removed."))
+    "Remove the child of this object at the given index. Return the child object
+    that was removed."))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; IGenerator - methods defining behavior of a graph generator
 
 (defprotocol ^:no-doc IGenerator
+  "Methods defining behavior of a virtual graph generator."
+
   (-regenerate?
     [this props]
     "Does this generator need to generate a new v-graph given the provided
-props?")
+    props?")
 
   (-set-dirty
     [this]
     "Sets the dirty flag on this generator, indicating that is needs to be
-regenerated.")
+    regenerated.")
 
   (-dirty?
     [this]
-    "Is this generator dirty?")
+    "Does this generator need to be re-rendered, even if the props have not
+    changed?")
 
   (-copy-generator
     [this other-obj]
@@ -281,6 +283,7 @@ regenerated.")
   (-cleanup-generator
     [this]
     "If this generator has a cleanup function call it"))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; State watching functions
@@ -384,23 +387,23 @@ the provided object."
         (virtual-node-type-desc v-graph)
         *v-graph (atom v-graph)]
     (specify! obj
-      IObject
-      (get-object-props [this]
+      IHasProperties
+      (get-props [this]
         (virtual-node-props @*v-graph))
-      (get-object-prop [this prop]
+      (get-prop [this prop]
         (let [cur-props (virtual-node-props @*v-graph)]
           (if (contains? cur-props prop)
             (get cur-props prop)
             (get default-props prop))))
-      (apply-props! [this new-props]
+      (set-props [this new-props]
         (apply-new-props! (virtual-node-props @*v-graph) new-props this prop-map default-props)
         (swap! *v-graph update-virtual-node-props new-props))
-      (destroy! [this]
+      (destroy [this]
         (when destructor (destructor this)))
 
       IHasVirtualGraph
       (-get-virtual-graph [this] @*v-graph)
-      (-set-virtual-graph-children! [this new-v-graph-children]
+      (-set-virtual-graph-children [this new-v-graph-children]
         (swap! *v-graph update-virtual-node-children new-v-graph-children))
 
       IGraphNode
@@ -495,16 +498,16 @@ the provided object."
   (let [{:keys [prop-map default-props destructor post-constructor]} type-desc
         *props (atom props)]
     (specify! obj
-      IObject
-      (get-object-props [this] @*props)
-      (get-object-prop [this prop]
+      IHasProperties
+      (get-props [this] @*props)
+      (get-prop [this prop]
         (let [cur-props @*props]
           (if (contains? cur-props prop)
             (get cur-props prop)
             (get default-props prop))))
-      (apply-props! [this new-props]
+      (set-props [this new-props]
         (swap! *props apply-new-props! new-props this prop-map default-props))
-      (destroy! [this]
+      (destroy [this]
         (when destructor (destructor this))))
     (when post-constructor (post-constructor obj))
     obj))
@@ -634,7 +637,7 @@ the provided object."
          (recur (dec i)))))
    (when parent
      (-remove-child-at! parent child-index))
-   (destroy! graph)
+   (destroy graph)
    nil))
 
 
@@ -654,7 +657,7 @@ the provided object."
       (when (>= i new-child-size)
         (destroy-graph! (nth children i) node i)
         (recur (dec i))))
-    (-set-virtual-graph-children!
+    (-set-virtual-graph-children
       node (drop-last (- child-count new-child-size) (virtual-node-children (-get-virtual-graph node))))
     children))
 
@@ -732,7 +735,7 @@ the provided object."
       ;; The node's type and properties are the same but there are children that need updates
       (virtual-node= new-v-graph cur-v-graph)
       (do
-        (-set-virtual-graph-children! graph (virtual-node-children new-v-graph))
+        (-set-virtual-graph-children graph (virtual-node-children new-v-graph))
         (add-children-to-queue! graph new-v-graph)
         graph)
 
@@ -740,8 +743,8 @@ the provided object."
       ;; properties and enqueue children for further compare
       (= (virtual-node-type-desc new-v-graph) (virtual-node-type-desc cur-v-graph))
       (do
-        (apply-props! graph (virtual-node-props new-v-graph))
-        (-set-virtual-graph-children! graph (virtual-node-children new-v-graph))
+        (set-props graph (virtual-node-props new-v-graph))
+        (-set-virtual-graph-children graph (virtual-node-children new-v-graph))
         (add-children-to-queue! graph new-v-graph)
         graph)
 

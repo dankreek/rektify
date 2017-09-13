@@ -196,31 +196,31 @@
 (deftest single-object-properties
   (testing "A basic property can be set and got"
     (let [o (rekt/new-object one-fish-desc)]
-      (is (= false (rekt/get-object-prop o :some-prop))
+      (is (= false (rekt/get-prop o :some-prop))
           "The default value is set on instantiation")
-      (rekt/apply-props! o {:some-prop true})
+      (rekt/set-props o {:some-prop true})
       (is (= true (.-someProp o)))
-      (is (= true (rekt/get-object-prop o :some-prop)))))
+      (is (= true (rekt/get-prop o :some-prop)))))
 
   (testing "A property which is set to false is applied"
     (let [o (rekt/new-object two-fish-desc {:in-the-beginning "a"
                                             :and-then "b"})]
       (is (= "a" (.-first o)))
       (is (= "b" (.-second o)))
-      (rekt/apply-props! o {:in-the-beginning false
-                            :and-then false})
+      (rekt/set-props o {:in-the-beginning false
+                            :and-then      false})
       (is (= false (.-first o)))
       (is (= false (.-second o)))))
 
   (testing "A composite property can be set and got"
     (let [o (rekt/new-object red-fish-desc)]
-      (is (= [0 1 -1] (rekt/get-object-prop o :something))
+      (is (= [0 1 -1] (rekt/get-prop o :something))
           "The default value is set on instantiation")
       (is (= 0 (.-x o)))
       (is (= 1 (.-y o)))
       (is (= -1 (.-z o)))
-      (rekt/apply-props! o {:something [1 2 3]})
-      (is (= [1 2 3] (rekt/get-object-prop o :something)))
+      (rekt/set-props o {:something [1 2 3]})
+      (is (= [1 2 3] (rekt/get-prop o :something)))
       (is (= 1 (.-x o)))
       (is (= 2 (.-y o)))
       (is (= 3 (.-z o)))))
@@ -230,8 +230,8 @@
       (is (= 1 (.-x o)))
       (is (= 800 (.-y o)))
       (is (= "pp5-1doodoo" (.-z o)))
-      (rekt/apply-props! o {})
-      (is (= [0 1 -1] (rekt/get-object-prop o :something))
+      (rekt/set-props o {})
+      (is (= [0 1 -1] (rekt/get-prop o :something))
           "Default props are set when they are no longer explicitly set")
       (is (= 0 (.-x o)))
       (is (= 1 (.-y o)))
