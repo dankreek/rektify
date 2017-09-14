@@ -1,5 +1,6 @@
 (ns rektify.core
   (:require [rektify.validation :as v]
+            [rektify.virtual-graph :as v-graph]
             [clojure.set :as set]
             [clojure.string :as str]))
 
@@ -23,63 +24,6 @@
 
 ;; A map of generators -> a list of all the state paths they are listening to.
 (defonce ^:no-doc *generator-registry (atom {}))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Virtual graph functions
-
-(defn virtual-node-props
-  [virtual-node]
-  (nth virtual-node 2 {}))
-
-
-(defn update-virtual-node-props
-  "Returns the virtual node with its properties changed to the `new-props `."
-  [virtual-node new-props]
-  (assoc virtual-node 2 new-props))
-
-
-(defn update-virtual-node-children
-  [virtual-node new-children]
-  (assoc virtual-node 3 new-children))
-
-
-(defn virtual-node-type-desc
-  [virtual-node]
-  (second virtual-node))
-
-(defn virtual-node-children
-  "Gets the sequence of children from a virtual graph node."
-  [virtual-graph]
-  (nth virtual-graph 3 nil))
-
-
-(defn virtual-node=
-  "Test to see if the type and properties of each virtual graph are the same"
-  [v-graph-1 v-graph-2]
-  (and (= (virtual-node-type-desc v-graph-1)
-          (virtual-node-type-desc v-graph-2))
-       (= (virtual-node-props v-graph-1)
-          (virtual-node-props v-graph-2))))
-
-
-(defn virtual-node-is-object?
-  [virtual-node]
-  (= ::object (first virtual-node)))
-
-
-(defn virtual-node-is-generator?
-  [virtual-node]
-  (= ::generator (first virtual-node)))
-
-
-(defn pp-v-graph
-  [v-graph]
-  (let [const (:constructor (virtual-node-type-desc v-graph))]
-    [(first v-graph)
-     (when const (.-name const))
-     (virtual-node-props v-graph)
-     (mapv pp-v-graph (virtual-node-children v-graph))]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -289,27 +233,27 @@ the provided object."
          child-index-fn :child-index
          replace-child-at-fn :replace-child-at
          remove-child-at-fn :remove-child-at}
-        (virtual-node-type-desc v-graph)
+        (v-graph/type-desc v-graph)
         *v-graph (atom v-graph)]
     (specify! obj
       IHasProperties
       (get-props [this]
-        (virtual-node-props @*v-graph))
+        (v-graph/props @*v-graph))
       (get-prop [this prop]
-        (let [cur-props (virtual-node-props @*v-graph)]
+        (let [cur-props (v-graph/props @*v-graph)]
           (if (contains? cur-props prop)
             (get cur-props prop)
             (get default-props prop))))
       (set-props [this new-props]
-        (apply-new-props! (virtual-node-props @*v-graph) new-props this prop-map default-props)
-        (swap! *v-graph update-virtual-node-props new-props))
+        (apply-new-props! (v-graph/props @*v-graph) new-props this prop-map default-props)
+        (swap! *v-graph v-graph/update-props new-props))
       (destroy [this]
         (when destructor (destructor this)))
 
       IHasVirtualGraph
       (-get-virtual-graph [this] @*v-graph)
       (-set-virtual-graph-children [this new-v-graph-children]
-        (swap! *v-graph update-virtual-node-children new-v-graph-children))
+        (swap! *v-graph v-graph/update-children new-v-graph-children))
 
       IGraphNode
       (-get-parent [this]
@@ -332,7 +276,7 @@ the provided object."
    (render-v-graph-from-generator-map gen-map props nil))
   ([gen-map props head-obj]
    (let [v-graph ((:render gen-map) props head-obj)]
-     (assert (or (nil? v-graph) (virtual-node-is-object? v-graph))
+     (assert (or (nil? v-graph) (v-graph/object? v-graph))
              "A generator's render function must return a graph with an object as the head.")
      v-graph)))
 
@@ -374,13 +318,13 @@ the provided object."
             (register-generator-obj! this (persistent! *observed-key-paths*))
             v-graph)))
 
-      ;; TODO: there's very possibly a memory leak here, since closures will enclose each other
+      ;; XXX: throw this away once generators are straightened out
       ;; will be fixed once generators are their own object trees
       (-copy-generator
         [this other-obj]
         (extend-with-generator! other-obj gen-desc @*props resolved-gen-map))
 
-      (-get-generator-virtual-graph [this] [::generator gen-desc @*props])
+      (-get-generator-virtual-graph [this] [v-graph/generator-key gen-desc @*props])
 
       (-get-generator-desc [this] gen-desc)
 
@@ -392,8 +336,8 @@ the provided object."
 
 (defn- extend-graph-obj-with-generator!
   [obj v-node resolved-gen-map]
-  (let [gen-type (virtual-node-type-desc v-node)
-        props (virtual-node-props v-node)]
+  (let [gen-type (v-graph/type-desc v-node)
+        props (v-graph/props v-node)]
     (extend-with-generator! obj gen-type props resolved-gen-map)))
 
 
@@ -476,8 +420,8 @@ the provided object."
 
 (defn- new-graph-object
   [v-node]
-  (let [type-desc (virtual-node-type-desc v-node)
-        init-props (virtual-node-props v-node)
+  (let [type-desc (v-graph/type-desc v-node)
+        init-props (v-graph/props v-node)
         new-obj (construct-object type-desc init-props)]
     (extend-graph-obj! new-obj v-node)))
 
@@ -485,9 +429,9 @@ the provided object."
 (defn- new-generator-object
   [v-node]
   (binding [*observed-key-paths* (transient {})]
-    (let [gen-desc (virtual-node-type-desc v-node)
+    (let [gen-desc (v-graph/type-desc v-node)
           resolved-gen-map (resolve-generator gen-desc)
-          init-props (virtual-node-props v-node)
+          init-props (v-graph/props v-node)
           gen-v-graph (render-v-graph-from-generator-map resolved-gen-map init-props)
           new-obj (new-graph-object gen-v-graph)]
       (extend-graph-obj-with-generator! new-obj v-node resolved-gen-map)
@@ -497,7 +441,7 @@ the provided object."
 
 (defn- reify-virtual-node
   [v-node]
-  (if (virtual-node-is-generator? v-node)
+  (if (v-graph/generator? v-node)
     (new-generator-object v-node)
     (new-graph-object v-node)))
 
@@ -507,7 +451,7 @@ the provided object."
   given parent and, if the new node has children, adds them to the queue."
   [parent queue v-node]
   (let [node (reify-virtual-node v-node)
-        v-children (virtual-node-children (-get-virtual-graph node))]
+        v-children (v-graph/children (-get-virtual-graph node))]
     (-add-child! parent node)
     (if (seq v-children)
       (conj queue [node v-children])
@@ -517,7 +461,7 @@ the provided object."
 (defn- reify-virtual-graph*
   ([v-graph]
    (let [head (reify-virtual-node v-graph)]
-     (loop [node-queue #queue [[head (virtual-node-children (-get-virtual-graph head))]]]
+     (loop [node-queue #queue [[head (v-graph/children (-get-virtual-graph head))]]]
        (let [[parent v-children] (peek node-queue)
              next-queue (reduce (partial reify-virtual-graph-level parent)
                                 (pop node-queue)
@@ -563,7 +507,7 @@ the provided object."
         (destroy-graph! (nth children i) node i)
         (recur (dec i))))
     (-set-virtual-graph-children
-      node (drop-last (- child-count new-child-size) (virtual-node-children (-get-virtual-graph node))))
+      node (drop-last (- child-count new-child-size) (v-graph/children (-get-virtual-graph node))))
     children))
 
 
@@ -582,7 +526,7 @@ the provided object."
 
 (defn- add-children-to-queue!
   [graph new-v-graph]
-  (let [v-node-children (virtual-node-children new-v-graph)
+  (let [v-node-children (v-graph/children new-v-graph)
         graph-children (process-children! graph v-node-children)
         child-count (count v-node-children)]
     (loop [i 0]
@@ -598,15 +542,15 @@ the provided object."
   "If the graph has a generator of the same type as the new v-graph then
   generate a new v-graph if the generator needs re-rendering "
   [graph new-v-graph]
-  (let [new-props (virtual-node-props new-v-graph)]
+  (let [new-props (v-graph/props new-v-graph)]
     ;; If the graph was made by a generator and the v-graph is a generator
-    (if (and (virtual-node-is-generator? new-v-graph)
+    (if (and (v-graph/generator? new-v-graph)
              (satisfies? IGenerator graph))
       (do
-        (when (not= (virtual-node-type-desc new-v-graph)
+        (when (not= (v-graph/type-desc new-v-graph)
                     (-get-generator-desc graph))
           ;; TODO: This a barfy hack until generators are straightened out
-          (let [new-gen-desc (virtual-node-type-desc new-v-graph)
+          (let [new-gen-desc (v-graph/type-desc new-v-graph)
                 new-gen-map (resolve-generator new-gen-desc)]
             (extend-with-generator! graph new-gen-desc new-props new-gen-map)
             (-set-dirty graph)))
@@ -638,23 +582,23 @@ the provided object."
       (destroy-graph! graph graph-parent parent-child-index)
 
       ;; The node's type and properties are the same but there are children that need updates
-      (virtual-node= new-v-graph cur-v-graph)
+      (v-graph/node= new-v-graph cur-v-graph)
       (do
-        (-set-virtual-graph-children graph (virtual-node-children new-v-graph))
+        (-set-virtual-graph-children graph (v-graph/children new-v-graph))
         (add-children-to-queue! graph new-v-graph)
         graph)
 
       ;; The new virtual node is the same type as the current, so update the
       ;; properties and enqueue children for further compare
-      (= (virtual-node-type-desc new-v-graph) (virtual-node-type-desc cur-v-graph))
+      (= (v-graph/type-desc new-v-graph) (v-graph/type-desc cur-v-graph))
       (do
-        (set-props graph (virtual-node-props new-v-graph))
-        (-set-virtual-graph-children graph (virtual-node-children new-v-graph))
+        (set-props graph (v-graph/props new-v-graph))
+        (-set-virtual-graph-children graph (v-graph/children new-v-graph))
         (add-children-to-queue! graph new-v-graph)
         graph)
 
       ;; The two virtual graph types are different, create the new and replace the old
-      (not= (virtual-node-type-desc new-v-graph) (virtual-node-type-desc cur-v-graph))
+      (not= (v-graph/type-desc new-v-graph) (v-graph/type-desc cur-v-graph))
       (let [new-graph (reify-virtual-graph* new-v-graph)]
         (when (satisfies? IGenerator graph)
           (-copy-generator graph new-graph))
@@ -819,7 +763,7 @@ the provided object."
    (assert (v/valid-object-desc-keys? object-desc)
            (str "The object description map contains the following invalid keys: "
                 (v/pp-set (v/invalid-object-desc-keys object-desc))))
-   [::object object-desc props children]))
+   [v-graph/object-key object-desc props children]))
 
 
 (defn generator-v-node
@@ -834,7 +778,7 @@ the provided object."
    (assert (v/valid-generator-map? gen-desc)
            (str "The object description map contains the following invalid keys: "
                 (v/pp-set (v/invalid-generator-desc-keys gen-desc))))
-   [::generator gen-desc props nil]))
+   [v-graph/generator-key gen-desc props nil]))
 
 
 (defn extend-existing-obj!
@@ -854,18 +798,5 @@ the provided object."
   (let [props (get-existing-object-properties graph (:prop-map object-desc))]
     (extend-graph-obj! graph (object-v-node object-desc props))))
 
-
-(defn virtual-graph?
-  "Is the provided `virtual-graph` a valid virtual graph?"
-  [virtual-graph]
-  (and (vector? virtual-graph)
-       (let [node-type (first virtual-graph)
-             type-desc (second virtual-graph)
-             props (nth virtual-graph 2 nil)
-             children (nth virtual-graph 3 nil)]
-         (and (keyword? node-type)
-              (map? type-desc)
-              (map? props)
-              (or (nil? children) (seq? children))))))
 
 
