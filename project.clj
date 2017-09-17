@@ -79,5 +79,6 @@
 
   :aliases {"test" ["doo" "phantom" "test" "once"]
             "test-phantom" ["doo" "phantom" "test"]
+            "test-firefox" ["doo" "firefox" "test"]
             "dev-test" ["test-phantom"]}
   )
