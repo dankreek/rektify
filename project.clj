@@ -29,8 +29,6 @@
 
   :jar-exclusions [#"public/.*"]
 
-  ;:source-paths ["src"]
-
   :test-paths ["test/cljs" "test/js"]
 
   :codox {:language :clojurescript
@@ -40,10 +38,12 @@
               [{:id "test"
                 :source-paths ["src" "test/cljs"]
                 :compiler {:main runners.doo
-                           :asset-path "/js/out"
-                           :output-to "target/test.js"
-                           :output-dir "target/cljstest/public/js/out"
+                           :asset-path "js/compiled/out"
+                           :output-to "resources/public/js/compiled/tests.js"
+                           :output-dir "resources/public/js/compiled"
                            :optimizations :whitespace
+                           :source-map "resources/public/js/compiled/tests.js.map"
+                           :source-map-timestamp true
                            :libs ["test/js/test.classes.js"]}}
 
                {:id "dev"
@@ -57,6 +57,7 @@
                            :output-dir "resources/public/js/compiled/out"
                            :source-map-timestamp true
                            :preloads [devtools.preload]}}
+
                ;; lein cljsbuild once min
                {:id "min"
                 :compiler {:output-to "resources/public/js/compiled/rektify.js"
