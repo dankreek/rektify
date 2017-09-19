@@ -2,7 +2,8 @@
   "Definitions and functions used to validate parameters passed to public
   functions."
   (:require [clojure.set :as set]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [rektify.virtual-graph :as v-graph]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants
@@ -68,7 +69,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Partial functions for validating inputs
+;; Public
 
 (def ^:no-doc required-object-desc-keys?
   (partial required-map-keys? required-obj-desc-keys))
@@ -106,4 +107,20 @@
   "Return a string with the provided set's contents comma-separated."
   [s]
   (str/join ", " s))
+
+
+(defn virtual-node?
+  "Is the provided `virtual-node` a valid virtual node?"
+  [virtual-node]
+  (and (vector? virtual-node)
+       (let [node-type (first virtual-node)
+             type-desc (second virtual-node)
+             props (nth virtual-node 2 nil)
+             children (nth virtual-node 3 nil)]
+         (and (keyword? node-type)
+              (if (= node-type v-graph/generator-key)
+                (or (map? type-desc) (fn? type-desc))
+                (map? type-desc))
+              (map? props)
+              (or (nil? children) (seq? children))))))
 

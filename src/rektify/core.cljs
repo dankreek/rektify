@@ -289,11 +289,15 @@ the provided object."
   (let [result-gen-desc (if (fn? gen-desc)
                           (gen-desc)
                           gen-desc)]
+    (assert (map? result-gen-desc)
+            "A generator description should be either a map or a function that returns a map")
+    (assert (v/required-generator-desc-keys? result-gen-desc)
+            (str "The generator description map is missing the following required keys: "
+                 (v/pp-set (v/missing-required-generator-desc-keys result-gen-desc))))
     (assert (v/valid-generator-map? result-gen-desc)
-            (str "A generator description must be either a function that returns "
-                 "a map with a :render function, or a map with a :render function."))
+            (str "The object description map contains the following invalid keys: "
+                 (v/pp-set (v/invalid-generator-desc-keys result-gen-desc))))
     result-gen-desc))
-
 
 
 (defn- extend-with-generator!
@@ -717,7 +721,9 @@ the provided object."
   ([cur-graph new-virtual-graph *state]
    (assert (or (nil? *state) (map? @*state))
            "The state must be either nil or a reference to a map")
-   ;; XXX: Check to see if a valid virtual graph was passed in
+   (assert (or (nil? new-virtual-graph)
+               (v/virtual-node? new-virtual-graph))
+           "An invalid virtual graph was provided")
    (binding [*prev-state* (when *state @*state)
              **cur-state* *state]
      (dirty-generators! *prev-state*)
@@ -772,12 +778,9 @@ the provided object."
   ([gen-desc]
    (generator-v-node gen-desc {}))
   ([gen-desc props]
-   (assert (v/required-generator-desc-keys? gen-desc)
-           (str "The generator description map is missing the following required keys: "
-                (v/pp-set (v/missing-required-generator-desc-keys gen-desc))))
-   (assert (v/valid-generator-map? gen-desc)
-           (str "The object description map contains the following invalid keys: "
-                (v/pp-set (v/invalid-generator-desc-keys gen-desc))))
+   (assert (or (fn? gen-desc)
+               (map? gen-desc))
+           "The generator description should be either a generator map or a function which returns a generator map.")
    [v-graph/generator-key gen-desc props nil]))
 
 

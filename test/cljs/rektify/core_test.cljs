@@ -6,6 +6,7 @@
             [clojure.set :as set]
             [clojure.zip :as z]))
 
+;; XXX: Put fish crap (bass turd) in separate namespace
 (defn fish-zip
   "Create a zipper over a tree of PixiJS objects."
   [head-object]
@@ -137,10 +138,22 @@
       (is (= true (.isDestroyed f0))))))
 
 ;; TODO: write tests for:
-;; XXX: get-existing-object-properties
-;; XXX: extend-existing-obj!
-;; XXX: extend-existing-graph-obj!
-;; XXX: virtual-graph?
+;; * get-existing-object-properties
+
+(deftest all-forms-of-generator-resolve
+  (let [render-fn (fn [props _] (one-fish))
+        gen-map {:render render-fn}
+        gen-map-factory (fn [] gen-map)]
+    (testing "A generator map generates a graph"
+      (let [g (rekt/reify-virtual-graph
+                (rekt/generator-v-node gen-map))]
+        (is (instance? classes/OneFish g))))
+
+    (testing "A generator map factory function generates a graph"
+      (let [g (rekt/reify-virtual-graph
+                (rekt/generator-v-node gen-map-factory))]
+        (is (instance? classes/OneFish g))))))
+
 
 (deftest re-rendering-second-children
   ;; Reproduces bug #7
@@ -170,6 +183,7 @@
 
       (is (= 2 (.-someProp (-> gz z/down z/down z/right z/node))))
       (is (= 42 (.-x (-> gz z/down z/down z/right z/down z/node)))))))
+
 
 (deftest single-object-construction
   (testing "An object with no constructor list can be created with the default constructor"
