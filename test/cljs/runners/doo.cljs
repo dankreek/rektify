@@ -3,5 +3,6 @@
             [runners.tests]))
 
 (doo-tests
-  'rektify.core-test)
+  'rektify.core-test
+  'test.classes-test)
 

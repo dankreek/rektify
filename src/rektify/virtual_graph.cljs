@@ -1,5 +1,6 @@
 (ns rektify.virtual-graph
-  "Virtual query and manipulation")
+  "Virtual query and manipulation"
+  (:refer-clojure :exclude [object?]))
 
 (def generator-key ::generator)
 (def object-key ::object)

@@ -37,17 +37,16 @@
   :cljsbuild {:builds
               [{:id "test"
                 :source-paths ["src" "test/cljs"]
-                :compiler {:main runners.doo
-                           :asset-path "js/compiled/out"
-                           :output-to "resources/public/js/compiled/tests.js"
-                           :output-dir "resources/public/js/compiled"
-                           :optimizations :whitespace
-                           :source-map "resources/public/js/compiled/tests.js.map"
+                :compiler {:output-to "target/test/testable.js"
+                           :output-dir "target/test"
+                           :main runners.doo
+                           :libs ["test/js/test.classes.js"]
+                           :source-map true
                            :source-map-timestamp true
-                           :libs ["test/js/test.classes.js"]}}
+                           :parallel-build true
+                           :optimizations :none}}
 
                {:id "dev"
-
                 :figwheel {:open-urls ["http://localhost:3449/index.html"]}
 
                 :compiler {:main rektify.core
