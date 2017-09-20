@@ -5,25 +5,25 @@
             [clojure.string :as str]))
 
 ;; TODO: Make generators their own trees of objects, and remove this hack
-(def ^:no-doc ^:dynamic *observed-key-paths*
+(def ^:private ^:dynamic *observed-key-paths*
   "Keeps a transient map of all key paths and values observed during a
   generator render call."
   nil)
 
 
-(def ^:no-doc ^:dynamic **cur-state*
+(def ^:private ^:dynamic **cur-state*
   "The state atom for the render cycle. All state updates will go here, but will
   not be reflected until next render."
   nil)
 
 
-(def ^:no-doc ^:dynamic *prev-state*
+(def ^:private ^:dynamic *prev-state*
   "The contents of the state atom before the render cycle starts."
   nil)
 
 
 ;; A map of generators -> a list of all the state paths they are listening to.
-(defonce ^:no-doc *generator-registry (atom {}))
+(defonce ^:private *generator-registry (atom {}))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -245,7 +245,8 @@ the provided object."
             (get cur-props prop)
             (get default-props prop))))
       (set-props [this new-props]
-        (apply-new-props! (v-graph/props @*v-graph) new-props this prop-map default-props)
+        (apply-new-props!
+          (v-graph/props @*v-graph) new-props this prop-map default-props)
         (swap! *v-graph v-graph/update-props new-props))
       (destroy [this]
         (when destructor (destructor this)))
@@ -293,7 +294,8 @@ the provided object."
             "A generator description should be either a map or a function that returns a map")
     (assert (v/required-generator-desc-keys? result-gen-desc)
             (str "The generator description map is missing the following required keys: "
-                 (v/pp-set (v/missing-required-generator-desc-keys result-gen-desc))))
+                 (v/pp-set (v/missing-required-generator-desc-keys
+                             result-gen-desc))))
     (assert (v/valid-generator-map? result-gen-desc)
             (str "The object description map contains the following invalid keys: "
                  (v/pp-set (v/invalid-generator-desc-keys result-gen-desc))))
@@ -328,7 +330,9 @@ the provided object."
         [this other-obj]
         (extend-with-generator! other-obj gen-desc @*props resolved-gen-map))
 
-      (-get-generator-virtual-graph [this] [v-graph/generator-key gen-desc @*props])
+      (-get-generator-virtual-graph
+        [this]
+        [v-graph/generator-key gen-desc @*props])
 
       (-get-generator-desc [this] gen-desc)
 
@@ -397,9 +401,14 @@ the provided object."
   a new object with all properties set. Return the plain objects with no
   methods specified on it."
   [type-desc init-props]
-  (let [{:keys [constructor constructor-list default-props prop-map post-constructor]} type-desc
+  (let [{:keys [constructor
+                constructor-list
+                default-props
+                prop-map
+                post-constructor]} type-desc
         available-props (merge default-props init-props)
-        constructor-keys (find-object-constructor constructor-list available-props)
+        constructor-keys (find-object-constructor
+                           constructor-list available-props)
         constructor-args (mapv #(get available-props %) constructor-keys)
         new-obj (apply construct-obj-hack constructor constructor-args)]
     ;; TODO: May be worth skipping re-setting props used in constructor
@@ -409,7 +418,8 @@ the provided object."
       (when-let [prop (first set-props)]
         ;; Skip properties without setters
         (when-let [setter (get-in prop-map [prop :setter])]
-          (setter new-obj (get-in prop-map [prop :property]) (get init-props prop)))
+          (setter
+            new-obj (get-in prop-map [prop :property]) (get init-props prop)))
         (recur (rest set-props))))
     new-obj))
 
@@ -436,7 +446,8 @@ the provided object."
     (let [gen-desc (v-graph/type-desc v-node)
           resolved-gen-map (resolve-generator gen-desc)
           init-props (v-graph/props v-node)
-          gen-v-graph (render-v-graph-from-generator-map resolved-gen-map init-props)
+          gen-v-graph (render-v-graph-from-generator-map
+                        resolved-gen-map init-props)
           new-obj (new-graph-object gen-v-graph)]
       (extend-graph-obj-with-generator! new-obj v-node resolved-gen-map)
       (register-generator-obj! new-obj (persistent! *observed-key-paths*))
@@ -465,7 +476,8 @@ the provided object."
 (defn- reify-virtual-graph*
   ([v-graph]
    (let [head (reify-virtual-node v-graph)]
-     (loop [node-queue #queue [[head (v-graph/children (-get-virtual-graph head))]]]
+     (loop [node-queue #queue [[head (v-graph/children
+                                       (-get-virtual-graph head))]]]
        (let [[parent v-children] (peek node-queue)
              next-queue (reduce (partial reify-virtual-graph-level parent)
                                 (pop node-queue)
@@ -511,7 +523,8 @@ the provided object."
         (destroy-graph! (nth children i) node i)
         (recur (dec i))))
     (-set-virtual-graph-children
-      node (drop-last (- child-count new-child-size) (v-graph/children (-get-virtual-graph node))))
+      node (drop-last (- child-count new-child-size)
+                      (v-graph/children (-get-virtual-graph node))))
     children))
 
 
@@ -535,10 +548,11 @@ the provided object."
         child-count (count v-node-children)]
     (loop [i 0]
       (when (< i child-count)
-        (swap! **apply-graph-queue* conj {:graph (nth graph-children i nil)
-                                          :new-v-graph (nth v-node-children i nil)
-                                          :graph-parent graph
-                                          :parent-child-index i})
+        (swap! **apply-graph-queue*
+               conj {:graph (nth graph-children i nil)
+                     :new-v-graph (nth v-node-children i nil)
+                     :graph-parent graph
+                     :parent-child-index i})
         (recur (inc i))))))
 
 
@@ -627,11 +641,13 @@ the provided object."
         (let [graph (nth dirty-generators i)
               new-v-graph (-get-generator-virtual-graph graph)
               graph-parent (-get-parent graph)
-              parent-child-index (when graph-parent (-child-index graph-parent graph))]
-          (swap! **apply-graph-queue* conj {:graph graph
-                                            :new-v-graph new-v-graph
-                                            :graph-parent graph-parent
-                                            :parent-child-index parent-child-index})
+              parent-child-index (when graph-parent
+                                   (-child-index graph-parent graph))]
+          (swap! **apply-graph-queue*
+                 conj {:graph graph
+                       :new-v-graph new-v-graph
+                       :graph-parent graph-parent
+                       :parent-child-index parent-child-index})
           (recur (inc i)))))))
 
 
@@ -641,7 +657,8 @@ the provided object."
   (binding [**apply-graph-queue* (atom #queue [])]
     (let [head-parent (-get-parent graph)
           head-child-index (when head-parent (-child-index head-parent graph))
-          head (apply-virtual-node-diff graph new-v-graph head-parent head-child-index)]
+          head (apply-virtual-node-diff
+                 graph new-v-graph head-parent head-child-index)]
       (loop []
         ;; Add all the dirty generators into the re-render stack
         (when (not (seq @**apply-graph-queue*))
@@ -652,7 +669,8 @@ the provided object."
                    (peek @**apply-graph-queue*)]
           (peek @**apply-graph-queue*)
           (swap! **apply-graph-queue* pop)
-          (apply-virtual-node-diff next-graph next-new-v-graph graph-parent parent-child-index)
+          (apply-virtual-node-diff
+            next-graph next-new-v-graph graph-parent parent-child-index)
           (recur)))
       head)))
 
