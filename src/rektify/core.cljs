@@ -737,6 +737,8 @@ the provided object."
   ([cur-graph new-virtual-graph]
    (re-render-graph! cur-graph new-virtual-graph (atom {})))
   ([cur-graph new-virtual-graph *state]
+   (assert (or (nil? new-virtual-graph) (v-graph/generator? new-virtual-graph))
+           "The virtual graph's head must be a generator or nil")
    (assert (or (nil? *state) (map? @*state))
            "The state must be either nil or a reference to a map")
    (assert (or (nil? new-virtual-graph)
