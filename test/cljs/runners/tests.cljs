@@ -1,4 +1,4 @@
 (ns runners.tests
-  (:require [rektify.core-test]
-            [test.classes-test]))
+  (:require [test.classes-test]
+            [rektify.object-test]))
 

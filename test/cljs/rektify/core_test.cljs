@@ -14,7 +14,7 @@
   that is the value of the `v-graph` property. This allows for easily testing
   the diffing of graphs and ensuring that the generator is re-rendered since
   its props are changed."
-  {:render (fn [{:keys [v-graph]} _] v-graph)})
+  {:generate (fn [{:keys [v-graph]} _] v-graph)})
 
 
 (defn simple-v-graph
@@ -24,7 +24,7 @@
   (rekt/generator-v-node simple-gen {:v-graph v-graph}))
 
 
-(deftest single-object-construction
+#_(deftest single-object-construction
   (testing "An object with no constructor list can be created with the default constructor"
     (is (instance? classes/OneFish (rekt/new-object classes/one-fish-desc))))
 
@@ -47,7 +47,8 @@
                 classes/two-fish-desc {:and-then "I was a thing"})]
       (is (= true (.-postConstructorCalled obj))))))
 
-(deftest single-object-properties
+
+#_(deftest single-object-properties
   (testing "A basic property can be set and got"
     (let [o (rekt/new-object classes/one-fish-desc)]
       (is (= false (rekt/get-prop o :some-prop))
@@ -106,119 +107,101 @@
       (is (= {:something [0 1 -1]} props)))))
 
 
-(deftest both-forms-of-generator-resolve
-  (let [render-fn (fn [props _] (classes/one-fish))
-        gen-map {:render render-fn}
+#_(deftest both-forms-of-generator-correctly-resolve
+  (let [generate-fn (fn [props _] (classes/one-fish))
+        gen-map {:generate generate-fn}
         gen-map-factory (fn [] gen-map)]
     (testing "A generator map generates a graph"
-      (let [g (rekt/reify-virtual-graph
+      (let [g (rekt/generate-graph
                 (rekt/generator-v-node gen-map))]
         (is (instance? classes/OneFish g))))
 
     (testing "A generator map factory function generates a graph"
-      (let [g (rekt/reify-virtual-graph
+      (let [g (rekt/generate-graph
                 (rekt/generator-v-node gen-map-factory))]
         (is (instance? classes/OneFish g))))))
 
 
-;; TODO: Work this into a regular test which ensures all children are updated
-(deftest re-rendering-second-children
-  ;; Reproduces bug #7
-  (let [v-graph-1 (classes/one-fish {}
-                      (classes/one-fish {}
-                        (classes/red-fish {})
-                        (classes/one-fish {:some-prop 0}
-                          (classes/red-fish {:something [1 2 3]}))))
-        v-graph-2 (classes/one-fish {}
-                    (classes/one-fish {}
-                      (classes/red-fish {})
-                      (classes/one-fish {:some-prop 2}
-                        (classes/red-fish {:something [42 42 42]}))))
-        g (rekt/reify-virtual-graph
-            (simple-v-graph v-graph-1))
-        gz (classes/fish-zip g)]
 
-    (testing "The reification worked"
-      (is (instance? classes/OneFish g))
-      (is (instance? classes/OneFish (-> gz z/down z/node)))
-      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
-      (is (instance? classes/OneFish (-> gz z/down z/down z/right z/node)))
-      (is (instance? classes/RedFish (-> gz z/down z/down z/right z/down z/node))))
-
-    (testing "Grandchildren are re-rendered"
-      (rekt/re-render-graph!
-        g (simple-v-graph v-graph-2))
-      (is (instance? classes/OneFish g))
-      (is (instance? classes/OneFish (-> gz z/down z/node)))
-      (is (instance? classes/RedFish (-> gz z/down z/down z/node)))
-      (is (instance? classes/OneFish (-> gz z/down z/down z/right z/node)))
-      (is (instance? classes/RedFish (-> gz z/down z/down z/right z/down z/node)))
-
-      (is (= 2 (.-someProp (-> gz z/down z/down z/right z/node))))
-      (is (= 42 (.-x (-> gz z/down z/down z/right z/down z/node)))))))
-
-
-
-(deftest create-new-graph-from-virtual-graph
+#_(deftest create-new-graph-with-a-single-generator
   (testing "Create a single object"
-    (let [one-fish-obj (rekt/reify-virtual-graph
+    (let [one-fish-obj (rekt/generate-graph
                          (simple-v-graph (classes/one-fish)))]
       (is (instance? classes/OneFish one-fish-obj))))
 
-  (testing "Create an object tree"
-    (let [head (rekt/reify-virtual-graph (simple-v-graph
-                                           (classes/one-fish {}
-                                             (classes/red-fish)
-                                             (classes/blue-fish))))
-          children (.getChildren head)]
-      (is (instance? classes/OneFish head))
-      (is (= 2 (.-length children)))
-      (is (instance? classes/RedFish (aget children 0)))
-      (is (instance? classes/BlueFish (aget children 1)))))
-
-  (testing "Siblings render in order"
-    (let [g (rekt/reify-virtual-graph (simple-v-graph
-                                        (classes/one-fish {}
-                                          (classes/red-fish)
-                                          (classes/blue-fish)
-                                          (classes/one-fish))))
+  (testing "Create a depth-1 tree correctly"
+    (let [g (rekt/generate-graph (simple-v-graph
+                                   (classes/one-fish {}
+                                     (classes/red-fish)
+                                     (classes/blue-fish)
+                                     (classes/one-fish))))
           zg (classes/fish-zip g)]
+      (is (instance? classes/OneFish g))
       (is (instance? classes/RedFish (-> zg z/down z/node)))
       (is (instance? classes/BlueFish (-> zg z/down z/right z/node)))
-      (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node))))))
+      (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node)))))
+
+  (testing "Create a depth-2 tree correctly"
+    (let [g (rekt/generate-graph
+              (simple-v-graph
+                (classes/one-fish {}
+                  (classes/red-fish {}
+                    (classes/blue-fish))
+                  (classes/blue-fish {}
+                    (classes/red-fish)))))
+          zg (classes/fish-zip g)]
+      (is (instance? classes/OneFish g))
+
+      (is (instance? classes/RedFish (-> zg z/down z/node))
+          "First child was correctly created")
+
+      (is (instance? classes/BlueFish (-> zg z/down z/right z/node))
+          "Second child was correctly created")
+
+      (is (instance? classes/BlueFish (-> zg z/down z/down z/node))
+          "First grandchild was correctly created")
+
+      (is (instance? classes/RedFish (-> zg z/down z/right z/down z/node)))))
+
+
+  (testing "A tree of generators creates the correct graph"
+    (let [g (rekt/generate-graph
+              (simple-v-graph
+                (classes/one-fish {})
+                ))])))
 
 ;; TODO: This and the following test should be rearranged into a more methodical
 ;;       set of tests in a single test. The current arrangement is an artifact
 ;;       of the previous API which allowed non-generated v-graphs at the head
-(deftest manipulate-basic-graph-with-new-virtual-graph
+#_(deftest manipulate-basic-graph-with-new-virtual-graph
   (testing "Create an object"
-    (let [o (rekt/reify-virtual-graph (simple-v-graph
+    (let [o (rekt/generate-graph (simple-v-graph
                                         (classes/one-fish {})))]
       (is (= false (.-someProp o)))
 
       (testing "and apply the same virtual graph"
-        (let [o1 (rekt/re-render-graph! o (simple-v-graph
+        (let [o1 (rekt/rektify-graph o (simple-v-graph
                                             (classes/one-fish {})))]
           (is (= o o1) "the same instance is returned")))
 
       (testing "and mutate it"
-        (rekt/re-render-graph! o (simple-v-graph
+        (rekt/rektify-graph o (simple-v-graph
                                    (classes/one-fish {:some-prop true})))
         (is (= true (.-someProp o))
             "`someProp` was mutated and the object is the same instance"))
 
       (testing "and set a prop to false"
-        (rekt/re-render-graph! o (simple-v-graph
+        (rekt/rektify-graph o (simple-v-graph
                                    (classes/one-fish {:some-prop false})))
         (is (= false (.-someProp o))))
 
       (testing "and destroy it"
-        (let [o2 (rekt/re-render-graph! o nil)]
+        (let [o2 (rekt/rektify-graph o nil)]
           (is (nil? o2))
           (is (= true (.isDestroyed o)))))))
 
   (testing "Create a tree"
-    (let [o (rekt/reify-virtual-graph (simple-v-graph
+    (let [o (rekt/generate-graph (simple-v-graph
                                         (classes/one-fish {}
                                           (classes/red-fish)
                                           (classes/blue-fish))))]
@@ -230,7 +213,7 @@
         (is (instance? classes/BlueFish new-blue-fish))
 
         (testing "and replace a node"
-          (rekt/re-render-graph! o (simple-v-graph
+          (rekt/rektify-graph o (simple-v-graph
                                      (classes/one-fish {:some-prop true}
                                        (classes/red-fish)
                                        (classes/red-fish))))
@@ -244,7 +227,7 @@
                 "The BlueFish was destroyed after being removed from the graph and replaced")
 
             (testing "modify a child's properties"
-              (rekt/re-render-graph!
+              (rekt/rektify-graph
                 o (simple-v-graph
                     (classes/one-fish {}
                       (classes/red-fish)
@@ -256,7 +239,7 @@
               (is (= 6 (.-z second-red-fish))))
 
             (testing "then remove a node"
-              (is (= o (rekt/re-render-graph! o (simple-v-graph
+              (is (= o (rekt/rektify-graph o (simple-v-graph
                                                   (classes/one-fish {}
                                                     (classes/red-fish))))))
               (is (= 1 (count (.getChildren o))))
@@ -264,7 +247,7 @@
                   "The RedFish was destroyed after being removed from the graph with no replacement")
 
               (testing "then add a node"
-                (rekt/re-render-graph! o (simple-v-graph
+                (rekt/rektify-graph o (simple-v-graph
                                            (classes/one-fish {}
                                              (classes/red-fish)
                                              (classes/blue-fish))))
@@ -273,9 +256,9 @@
                 (is (instance? classes/BlueFish (.getChildAt o 1))))))))))
 
   (testing "New siblings render in order"
-    (let [g (rekt/reify-virtual-graph (simple-v-graph (classes/one-fish)))
+    (let [g (rekt/generate-graph (simple-v-graph (classes/one-fish)))
           zg (classes/fish-zip g)]
-      (rekt/re-render-graph! g (simple-v-graph
+      (rekt/rektify-graph g (simple-v-graph
                                  (classes/one-fish {}
                                    (classes/red-fish)
                                    (classes/blue-fish)
@@ -285,7 +268,7 @@
       (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node)))
 
       (testing "and re-render in order"
-        (rekt/re-render-graph!
+        (rekt/rektify-graph
           g (simple-v-graph (classes/one-fish {}
                               (classes/red-fish)
                               (classes/blue-fish)
@@ -295,18 +278,18 @@
         (is (instance? classes/OneFish (-> zg z/down z/right z/right z/node))))
 
       (testing "and can be removed"
-        (rekt/re-render-graph!
+        (rekt/rektify-graph
           g (simple-v-graph (classes/one-fish))))))
 
   (testing "A tree is destroyed and replaced when the head node's type changes"
-    (let [g0 (rekt/reify-virtual-graph (simple-v-graph
+    (let [g0 (rekt/generate-graph (simple-v-graph
                                          (classes/one-fish {}
                                            (classes/red-fish)
                                            (classes/blue-fish))))
           old-one-fish g0
           old-red-fish (.getChildAt old-one-fish 0)
           old-blue-fish (.getChildAt old-one-fish 1)
-          g1 (rekt/re-render-graph! g0 (simple-v-graph
+          g1 (rekt/rektify-graph g0 (simple-v-graph
                                          (classes/blue-fish {}
                                            (classes/one-fish)
                                            (classes/red-fish))))
@@ -321,7 +304,7 @@
       (is (= true (.isDestroyed old-blue-fish)))))
 
   (testing "A subtree is destroyed and replaced"
-    (let [old-root (rekt/reify-virtual-graph
+    (let [old-root (rekt/generate-graph
                      (simple-v-graph
                        (classes/one-fish {}
                          (classes/red-fish {}
@@ -330,7 +313,7 @@
           old-red-fish (.getChildAt old-root 0)
           old-blue-fish1 (.getChildAt old-red-fish 0)
           old-blue-fish2 (.getChildAt old-red-fish 1)
-          new-root (rekt/re-render-graph!
+          new-root (rekt/rektify-graph
                      old-root (simple-v-graph
                                 (classes/one-fish {}
                                   (classes/blue-fish {}
@@ -355,7 +338,7 @@
         (is (= true (.isDestroyed old-blue-fish2)))))))
 
 
-(deftest manipulate-generated-graph
+#_(deftest manipulate-generated-graph
   (testing "A generator creates a new virtual graph"
     (let [*render-props (atom [])
           *cleaned-up (atom false)
@@ -363,7 +346,7 @@
                                (:v-graph props))
                      :cleanup (fn [] (reset! *cleaned-up true))}
           v-graph-0 (classes/one-fish {} (classes/red-fish) (classes/blue-fish))
-          g0 (rekt/reify-virtual-graph (rekt/generator-v-node
+          g0 (rekt/generate-graph (rekt/generator-v-node
                                          generator {:v-graph v-graph-0}))
           old-one-fish g0
           old-red-fish (.getChildAt old-one-fish 0)
@@ -371,7 +354,7 @@
       (is (= [{:v-graph v-graph-0}] @*render-props))
 
       (testing "and is not re-rendered if the props don't change"
-        (let [same-g (rekt/re-render-graph!
+        (let [same-g (rekt/rektify-graph
                        g0 (rekt/generator-v-node
                             generator {:v-graph v-graph-0}))]
           (is (= g0 same-g))
@@ -381,7 +364,7 @@
         (let [v-graph-1 (classes/red-fish {}
                           (classes/blue-fish)
                           (classes/one-fish))
-              g1 (rekt/re-render-graph!
+              g1 (rekt/rektify-graph
                    g0 (rekt/generator-v-node
                         generator {:v-graph v-graph-1}))
               new-red-fish g1
@@ -396,7 +379,7 @@
           (is (= true (.isDestroyed old-blue-fish)))
 
           (testing "and destroys its objects when it goes away"
-            (let [g2 (rekt/re-render-graph!
+            (let [g2 (rekt/rektify-graph
                        g1 (rekt/generator-v-node
                             generator {:v-graph nil}))]
               (is (nil? g2))
@@ -410,7 +393,7 @@
   (testing "A generator which is a child of an object creates a proper graph"
     (let [v-graph-0 (classes/red-fish {} (classes/blue-fish))
           r {:render (fn [props] (:v-graph props))}
-          g0 (rekt/reify-virtual-graph
+          g0 (rekt/generate-graph
                (simple-v-graph (classes/one-fish {}
                                  (rekt/generator-v-node r {:v-graph v-graph-0}))))
           o g0]
@@ -421,7 +404,7 @@
         (is (instance? classes/RedFish old-red-fish))
         (is (instance? classes/BlueFish old-blue-fish))
         (testing "and destroys its objects when it goes away"
-          (rekt/re-render-graph!
+          (rekt/rektify-graph
             g0 (simple-v-graph (classes/one-fish {}
                                  (rekt/generator-v-node r {:v-graph nil}))))
           (is (instance? classes/OneFish o))
@@ -432,7 +415,7 @@
   (testing "A generator which yields a graph containing generators creates a proper graph"
     (let [gen1 {:render #(classes/blue-fish)}
           gen0 {:render #(classes/red-fish {} (rekt/generator-v-node gen1 {}))}
-          o (rekt/reify-virtual-graph
+          o (rekt/generate-graph
               (simple-v-graph (classes/one-fish {}
                                 (rekt/generator-v-node gen0 {}))))]
       (is (instance? classes/OneFish o))
@@ -443,7 +426,7 @@
         (is (instance? classes/BlueFish old-blue-fish))
 
         (testing "and they all fall down"
-          (rekt/re-render-graph!
+          (rekt/rektify-graph
             o (simple-v-graph (classes/one-fish)))
           (is (= 0 (count (.getChildren o))))
           (is (= 0 (count (.getChildren old-red-fish))))
@@ -456,7 +439,7 @@
                            (classes/blue-fish))}
           gen2 {:render #(classes/one-fish {}
                            (classes/red-fish))}
-          g (rekt/reify-virtual-graph
+          g (rekt/generate-graph
               (simple-v-graph
                 (classes/one-fish {}
                   (rekt/generator-v-node gen1 {:a 1}))))
@@ -469,7 +452,7 @@
       (is (instance? classes/RedFish rf-0))
       (is (instance? classes/BlueFish bf-0))
 
-      (let [new-g (rekt/re-render-graph!
+      (let [new-g (rekt/rektify-graph
                     g (simple-v-graph
                         (classes/one-fish {}
                           (rekt/generator-v-node gen2 {:b 3}))))
@@ -483,7 +466,7 @@
         (is (instance? classes/RedFish rf-1))
         (is (= 1 (count (.getChildren of-1))))))))
 
-(deftest generator-life-cycle-functions
+#_(deftest generator-life-cycle-functions
   (let [*generate-order (atom [])
         *cleanup-order (atom [])
         *gen-a-head (atom nil)
@@ -521,7 +504,7 @@
         v-graph #(rekt/generator-v-node gen-a %)]
 
     (testing "Generator life cycle functions are called in the correct order"
-      (let [g (rekt/re-render-graph! nil (v-graph {}))
+      (let [g (rekt/rektify-graph nil (v-graph {}))
             zg (classes/fish-zip g)]
         (testing "when creating a new graph"
           (is (= [:a :b :c] @*generate-order)))
@@ -534,11 +517,11 @@
         (testing "when re-rendering"
           (testing "doesn't re-render if it doesn't need to"
             (reset! *generate-order [])
-            (rekt/re-render-graph! g (v-graph {}))
+            (rekt/rektify-graph g (v-graph {}))
             (is (= [] @*generate-order)))
 
           (testing "it re-renders in correct order when it receives new props"
-            (rekt/re-render-graph! g (v-graph {:poop "stewart"}))
+            (rekt/rektify-graph g (v-graph {:poop "stewart"}))
             (is (= [:a :b :c] @*generate-order))
 
             (testing "and the correct head object references are passed in"
@@ -550,7 +533,7 @@
           (let [prev-a @*gen-a-head
                 prev-b @*gen-b-head
                 prev-c @*gen-c-head]
-            (rekt/re-render-graph! g nil)
+            (rekt/rektify-graph g nil)
             (is (= prev-a @*gen-a-head))
             (is (= prev-b @*gen-b-head))
             (is (= prev-c @*gen-c-head))
@@ -563,7 +546,7 @@
             (is (= [:a :c :b] @*cleanup-order))))))))
 
 
-(deftest generators-with-render-cycle-state
+#_(deftest generators-with-render-cycle-state
   (testing "a single generator"
     ;; TODO: Remove hack after #3 is resolved
     (swap! rekt/*generator-registry {})
@@ -577,12 +560,12 @@
                                "The correct state was observed"))
                          (classes/blue-fish))
                :cleanup #(reset! *cleaned-up true)}
-          g (rekt/reify-virtual-graph (simple-v-graph
+          g (rekt/generate-graph (simple-v-graph
                                         (classes/one-fish))
-                                      *state)]
+                                 *state)]
 
       (testing "can read the initial state"
-        (rekt/re-render-graph!
+        (rekt/rektify-graph
           g (simple-v-graph (classes/one-fish {}
                               (rekt/generator-v-node gen)))
           *state)
@@ -593,14 +576,14 @@
         ;; TODO: There's an issue with reloading in this test somewhere (doesn't happen every time)
         ;;       It's most likely related to generators being a mess right now
         ;;       and should be solved with #3
-        (rekt/re-render-graph!
+        (rekt/rektify-graph
           g (simple-v-graph (classes/one-fish {}
                               (rekt/generator-v-node gen)))
           *state)
         (is (= [0 1] @*state-history) "The generator re-rendered once"))
 
       (testing "does not re-render if state did not change"
-        (rekt/re-render-graph!
+        (rekt/rektify-graph
           g (simple-v-graph (classes/one-fish {}
                               (rekt/generator-v-node gen)))
           *state)
@@ -608,9 +591,9 @@
 
       (testing "does not re-render when removed from graph"
         (reset! *state {:a 2})
-        (rekt/re-render-graph! g (simple-v-graph
+        (rekt/rektify-graph g (simple-v-graph
                                    (classes/one-fish))
-                               *state)
+                            *state)
         (is (= [0 1] @*state-history) "The generator did not re-render")
         (is (= true @*cleaned-up) "The generator clean-up function was called"))))
 
@@ -632,9 +615,9 @@
                            (is (= 6 (get-in @*state [:a :b])) "Value changed in the atom")
                            (is (= orig-val (rekt/get-in-state [:a :b])) "Value did not change during render")
                            (classes/one-fish)))}
-          g (rekt/reify-virtual-graph (rekt/generator-v-node gen) *state)]
+          g (rekt/generate-graph (rekt/generator-v-node gen) *state)]
       (is (= 1 @*render-count))
       (swap! *state assoc-in [:a :b] 0)
-      (rekt/re-render-graph! g (rekt/generator-v-node gen) *state)
+      (rekt/rektify-graph g (rekt/generator-v-node gen) *state)
       (is (= 2 @*render-count)
           "Should have rendered once more because generator is watching `[:a :b]`"))))

@@ -14,6 +14,7 @@ test.classes.Fish = function Fish() {
 test.classes.Fish.prototype.addChild = function(child) {
   child._parent = this;
   this._children.push(child);
+  return child;
 };
 
 test.classes.Fish.prototype.getChildIndex = function(child) {
@@ -23,16 +24,6 @@ test.classes.Fish.prototype.getChildIndex = function(child) {
   } else {
     throw Error('Child not found');
   }
-};
-
-test.classes.Fish.prototype.removeChild = function(child) {
-  var childIndex = this.getChildIndex(child);
-
-  if ((childIndex !== 0) && !childIndex) {
-    throw Error('Child not found');
-  }
-
-  this.removeChildAt(childIndex);
 };
 
 test.classes.Fish.prototype.getChildAt = function(index) {
@@ -52,7 +43,14 @@ test.classes.Fish.prototype.replaceChildAt = function(newChild, index) {
   oldChild._parent = null;
 
   this._children[index] = newChild;
+
+  return oldChild;
 };
+
+test.classes.Fish.prototype.replaceChild = function(oldChild, newChild) {
+  var childIndex = this.getChildIndex(oldChild);
+  return this.replaceChildAt(newChild, childIndex);
+}
 
 test.classes.Fish.prototype.removeChildAt = function(index) {
   if ((index !== 0) && !index) {
@@ -69,6 +67,11 @@ test.classes.Fish.prototype.removeChildAt = function(index) {
   this._children.splice(index, 1);
   return child;
 };
+
+test.classes.Fish.prototype.removeChild = function(child) {
+  var childIndex = this.getChildIndex(child);
+  return this.removeChildAt(childIndex);
+}
 
 test.classes.Fish.prototype.getChildren = function() {
   return this._children;
@@ -100,8 +103,11 @@ test.classes.Fish.prototype.isDestroyed = function() {
  * @constructor
  * @extends {test.classes.Fish}
  */
-test.classes.OneFish = function OneFish() {
+test.classes.OneFish = function OneFish(optionalParam) {
   test.classes.Fish.call(this);
+
+  this.optionalParam = optionalParam;
+
   this.someProp = false;
   this.wasConstructorCalled = true;
 };
@@ -127,7 +133,8 @@ test.classes.TwoFish = function TwoFish(firstArg, secondArg) {
 
   this.first = firstArg;
   this.second = secondArg;
-  this.postConstructorCalled = false;
+  this.postConstructorObjDesc = null;
+  this.postConstructorProps = null;
 }
 
 test.classes.TwoFish.prototype = Object.create(test.classes.Fish.prototype);
@@ -173,6 +180,7 @@ test.classes.RedFish.prototype.setSomething = function(x, y, z) {
  */
 test.classes.BlueFish = function BlueFish() {
   test.classes.Fish.call(this);
+  this.kindOfBlue = null;
 };
 
 test.classes.BlueFish.prototype = Object.create(test.classes.Fish.prototype);

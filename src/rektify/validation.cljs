@@ -9,7 +9,7 @@
 ;; Constants
 
 (def required-generator-life-cycles
-  #{:render})
+  #{:generate})
 
 
 (def optional-generator-life-cycles

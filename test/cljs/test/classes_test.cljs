@@ -1,10 +1,10 @@
 (ns test.classes-test
   "Functions for creating test class virtual nodes as well as test to ensure
   the JS test classes work in addition to the object description maps."
-  (:require [clojure.test  :refer-macros [deftest is testing]]
+  (:require [clojure.test  :refer-macros [deftest is testing run-tests]]
             [test.classes :as classes]
             [clojure.zip :as z]
-            [rektify.core :as rekt]))
+            [goog.object :as object]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants
@@ -33,20 +33,28 @@
   (.replaceChildAt obj new-child i))
 
 
+(defn replace-child [obj old-child new-child]
+  (.replaceChild obj old-child new-child))
+
+
 (defn remove-child-at [obj i]
   (.removeChildAt obj i))
+
+
+(defn remove-child [obj child]
+  (.removeChild obj child))
 
 
 (defn get-children [obj]
   (.getChildren obj))
 
 
-(defn destroy [obj]
+(defn destroy [obj-desc obj]
   (.destroy obj))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; customer getters and setters
+;; custom getters and setters
 
 (defn get-something-from-red
   [obj _]
@@ -58,31 +66,52 @@
   (.setSomething obj x y z))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; object descriptions
+
 (def fishy-function-desc
   {:get-parent get-parent
    :add-child add-child
-   :child-index child-index
-   :replace-child-at replace-child-at
-   :remove-child-at remove-child-at
    :get-children get-children
-   :destructor destroy})
+   :destructor destroy
+   :replace-child replace-child
+   :remove-child remove-child
+
+   ;; Not used by rektify yet
+   ;:child-index child-index
+   ;:replace-child-at replace-child-at
+   ;:remove-child-at remove-child-at
+   })
 
 
 (def one-fish-desc
   (merge
     fishy-function-desc
-    {:prop-map {:some-prop {:property "someProp" :setter aset :getter aget}}
+    {:prop-map {:some-prop {:property "someProp"
+;; TODO: Make setter and getter optional w/defaults (Issue #22)
+                            :setter object/set
+                            :getter object/get}
+                :optional {:property "optionalParam"
+                           :setter object/set
+                           :getter object/get}}
      :constructor classes/OneFish
+     :constructor-list [[:optional] []]
      :default-props {:some-prop false}}))
 
 
 (def two-fish-desc
   (merge
     fishy-function-desc
-    {:prop-map {:in-the-beginning {:property "first" :setter aset :getter aget}
-                :and-then {:property "second" :setter aset :getter aget}}
+    {:prop-map {:in-the-beginning {:property "first"
+                                   :setter object/set
+                                   :getter object/get}
+                :and-then {:property "second"
+                           :setter object/set
+                           :getter object/get}}
      :constructor classes/TwoFish
-     :post-constructor #(set! (.-postConstructorCalled %) true)
+     :post-constructor (fn [obj-desc obj& init-props]
+                         (set! (.-postConstructorObjDesc obj&) obj-desc)
+                         (set! (.-postConstructorProps obj&) init-props))
      :constructor-list [[:in-the-beginning :and-then]]
      :default-props {:in-the-beginning "it was before the end."}}))
 
@@ -92,41 +121,27 @@
     fishy-function-desc
     {:prop-map {:something {:getter get-something-from-red
                             :setter set-something-on-red}}
-     :constructor classes/RedFish
-     :default-props {:something [0 1 -1]}}))
+     :constructor classes/RedFish}))
 
 
 (def blue-fish-desc
   (merge
     fishy-function-desc
-    {:prop-map {} ; TODO: This should be optional (Issue #17)
-     :constructor classes/BlueFish
-     :constructor-list [[]]}))
+    {:prop-map {:kind-of-blue {:property "kindOfBlue"
+                               :setter object/set
+                               :getter object/get}}
+     :constructor classes/BlueFish}))
 
 
-(defn one-fish
-  ([] (one-fish {}))
-  ([props & children]
-   (rekt/object-v-node one-fish-desc props children)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Test tree manipulation methods of test classes
 
-
-(defn red-fish
-  ([] (red-fish {}))
-  ([props & children]
-   (rekt/object-v-node red-fish-desc props children)))
-
-
-(defn blue-fish
-  ([] (blue-fish {}))
-  ([props & children]
-   (rekt/object-v-node blue-fish-desc props children)))
-
-
-(deftest test-classes-work
+(deftest js-methods
   (let [f0 (new classes/Fish)
         f1 (new classes/Fish)
         f2 (new classes/Fish)]
-    (testing "can add and remove children"
+
+    (testing "add and remove children by index"
       (is (= 0 (count (.getChildren f0))))
       (is (nil? (.getParent f1)))
       (.addChild f0 f1)
@@ -141,7 +156,7 @@
       (.removeChildAt f0 0)
       (is (= 0 (count (.getChildren f0))))))
 
-  (testing "can replace a child"
+  (testing "replace a child at index"
     (let [f0 (new classes/Fish)
           f1 (new classes/Fish)
           f2 (new classes/Fish)]
@@ -152,13 +167,26 @@
       (.replaceChildAt f0 f2 1)
       (is (= f2 (.getChildAt f0 1)))))
 
+  (testing "replace a child by reference"
+    (let [f0 (new classes/Fish)
+          f1 (new classes/Fish)
+          f2 (new classes/Fish)
+          f3 (new classes/Fish)]
+      (.addChild f0 f1)
+      (.addChild f0 f2)
+      (.replaceChild f0 f1 f3)
+      (is (= f3 (.getChildAt f0 0)))
+      (.replaceChild f0 f2 f1)
+      (is (= f1 (.getChildAt f0 1)))))
+
   (testing "destroying an object sets the destroyed flag"
     (let [f0 (new classes/Fish)]
       (.destroy f0)
       (is (= true (.isDestroyed f0))))))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Public
+;; utility functions
 
 (defn fish-zip
   "Create a zipper over a tree of PixiJS objects."

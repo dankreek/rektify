@@ -1,6 +1,9 @@
 (ns rektify.core
   (:require [rektify.validation :as v]
             [rektify.virtual-graph :as v-graph]
+            [rektify.graph :as g]
+            [rektify.generators :as gen]
+            [rektify.object :as o]
             [clojure.set :as set]
             [clojure.string :as str]))
 
@@ -11,13 +14,13 @@
   nil)
 
 
-(def ^:private ^:dynamic **cur-state*
+(def ^:private ^:dynamic **next-state*
   "The state atom for the render cycle. All state updates will go here, but will
   not be reflected until next render."
   nil)
 
 
-(def ^:private ^:dynamic *prev-state*
+(def ^:private ^:dynamic *cur-state*
   "The contents of the state atom before the render cycle starts."
   nil)
 
@@ -64,35 +67,6 @@
     [this new-v-graph-children]
     "Update the children of the virtual graph, in the case where this node
     doesn't need to be updated, but its children do."))
-
-
-(defprotocol ^:no-doc IGraphNode
-  "Methods for types which are members of a graph."
-
-  (-get-children
-    [this]
-    "Get the list of children of this object.")
-
-  (-get-parent
-    [this]
-    "Get the parent of this object.")
-
-  (-add-child!
-    [this child]
-    "Add a child to the end of the object's child list")
-
-  (-child-index
-    [this child]
-    "Get the index in the child list of the provided child object.")
-
-  (-replace-child-at!
-    [this new-child index]
-    "Replace the object at the given index with the provided child.")
-
-  (-remove-child-at!
-    [this index]
-    "Remove the child of this object at the given index. Return the child object
-    that was removed."))
 
 
 (defprotocol ^:no-doc IGenerator
@@ -159,21 +133,6 @@ each path with the current state value. "
       (fn [[path val]] (= (get-in m path) val))
       paths->vals)
     false))
-
-
-(defn- dirty-generators!
-  "Compare every generator's previous val for each state path and if the current
-  state path's value is different, set the dirty flag."
-  [new-state]
-  (let [objects (keys @*generator-registry)
-        objects-count (count objects)]
-    (loop [i 0]
-      (when (< i objects-count)
-        (let [object (nth objects i)
-              paths->vals (get @*generator-registry object)]
-          (when (dirty-paths? new-state paths->vals)
-            (-set-dirty (nth objects i))))
-        (recur (inc i))))))
 
 
 (defn- get-dirty-generators
@@ -256,7 +215,7 @@ the provided object."
       (-set-virtual-graph-children [this new-v-graph-children]
         (swap! *v-graph v-graph/update-children new-v-graph-children))
 
-      IGraphNode
+      g/IGraphNode
       (-get-parent [this]
         (get-parent-fn this))
       (-add-child! [this child]
@@ -432,7 +391,7 @@ the provided object."
      (extend-obj! new-obj type-desc init-props))))
 
 
-(defn- new-graph-object
+(defn- create-graph-object
   [v-node]
   (let [type-desc (v-graph/type-desc v-node)
         init-props (v-graph/props v-node)
@@ -440,57 +399,57 @@ the provided object."
     (extend-graph-obj! new-obj v-node)))
 
 
-(defn- new-generator-object
-  [v-node]
-  (binding [*observed-key-paths* (transient {})]
-    (let [gen-desc (v-graph/type-desc v-node)
-          resolved-gen-map (resolve-generator gen-desc)
-          init-props (v-graph/props v-node)
-          gen-v-graph (render-v-graph-from-generator-map
-                        resolved-gen-map init-props)
-          new-obj (new-graph-object gen-v-graph)]
-      (extend-graph-obj-with-generator! new-obj v-node resolved-gen-map)
-      (register-generator-obj! new-obj (persistent! *observed-key-paths*))
-      new-obj)))
+(defn- create-generator
+  "Create a new generator instance and add the parent generator's children if
+  a parent was provided. If there is no parent then set to nil."
+  [v-graph gen-parent]
+  (let [new-gen (gen/create-generator
+                  (v-graph/type-desc v-graph) gen-parent)]
+    (when gen-parent (g/-add-child! gen-parent new-gen))
+    new-gen))
 
 
-(defn- reify-virtual-node
-  [v-node]
-  (if (v-graph/generator? v-node)
-    (new-generator-object v-node)
-    (new-graph-object v-node)))
+(defn- link-gen-and-object
+  "Links the generator to the provided object, and links the object to the
+  generator. Returns the generator instance."
+  [gen obj]
+  (gen/link-root-obj-to-gen obj gen)
+  (gen/set-root-obj gen obj))
 
 
-(defn- reify-virtual-graph-level
-  "Reducer for `reify-virtual-graph` which reifies the v-node, attaches it the
-  given parent and, if the new node has children, adds them to the queue."
-  [parent queue v-node]
-  (let [node (reify-virtual-node v-node)
-        v-children (v-graph/children (-get-virtual-graph node))]
-    (-add-child! parent node)
-    (if (seq v-children)
-      (conj queue [node v-children])
-      queue)))
+(defn- create-and-link-subtree-root
+  [generator props]
+  (let [generated-v-graph (gen/generate generator props)
+        subtree-head (create-graph-object generated-v-graph)]
+    (link-gen-and-object generator subtree-head)
+    subtree-head))
 
 
-(defn- reify-virtual-graph*
+(defn- generate-graph*
   ([v-graph]
-   (let [head (reify-virtual-node v-graph)]
-     (loop [node-queue #queue [[head (v-graph/children
-                                       (-get-virtual-graph head))]]]
-       (let [[parent v-children] (peek node-queue)
-             next-queue (reduce (partial reify-virtual-graph-level parent)
-                                (pop node-queue)
-                                v-children)]
-         (when (seq next-queue) (recur next-queue))))
-     head)))
+   (generate-graph* v-graph nil nil))
+  ([v-graph gen-parent obj-parent]
+    (if (v-graph/generator? v-graph)
+      ;; XXX: Factor this better!!!
+      (let [new-gen (create-generator v-graph gen-parent)
+            subtree-root (create-and-link-subtree-root
+                           new-gen (v-graph/props v-graph))]
+        (when obj-parent (g/-add-child! obj-parent subtree-root))
+        (doseq [v-child-node (v-graph/children (gen/v-graph new-gen))]
+          (generate-graph* v-child-node new-gen subtree-root))
+        subtree-root)
+      (let [new-obj (create-graph-object v-graph)]
+        (when obj-parent (g/-add-child! obj-parent new-obj))
+        (doseq [v-child-node (v-graph/children v-graph)]
+          (generate-graph* v-child-node gen-parent new-obj))
+        new-obj))))
 
 
 (defn- destroy-graph!
   ([graph]
    (destroy-graph! graph nil nil))
   ([graph parent child-index]
-   (let [children (-get-children graph)
+   (let [children (g/-get-children graph)
          child-count (count children)]
      ;; If this node has a generator call its cleanup method before destroying its children
      (when (satisfies? IGenerator graph)
@@ -501,7 +460,7 @@ the provided object."
          (destroy-graph! (nth children i) graph i)
          (recur (dec i)))))
    (when parent
-     (-remove-child-at! parent child-index))
+     (g/-remove-child-at! parent child-index))
    (destroy graph)
    nil))
 
@@ -516,7 +475,7 @@ the provided object."
   "Truncate the given node's child list down to the size specified and update
   the v-node to reflect the new child list."
   [node new-child-size]
-  (let [children (-get-children node)
+  (let [children (g/-get-children node)
         child-count (count children)]
     (loop [i (dec child-count)]
       (when (>= i new-child-size)
@@ -533,7 +492,7 @@ the provided object."
   "If the new virtual child list is shorter than the old child list, truncate
   the old graph."
   [graph v-node-children]
-  (let [graph-children (-get-children graph)
+  (let [graph-children (g/-get-children graph)
         graph-child-count (count graph-children)
         new-v-child-count (count v-node-children)]
     (if (<= graph-child-count new-v-child-count)
@@ -581,6 +540,7 @@ the provided object."
 (defn- apply-virtual-node-diff
   [graph init-new-v-graph graph-parent parent-child-index]
   ;; TODO: Define -get-virtual-graph on the default object and return nil
+  ;; TODO: All cond conditions should be their own functions
   (let [cur-v-graph (when graph (-get-virtual-graph graph))
         new-v-graph (resolve-generator-obj graph init-new-v-graph)]
     (cond
@@ -591,8 +551,8 @@ the provided object."
 
       ;; There is no real node here so create one
       (nil? graph)
-      (let [new-graph (reify-virtual-graph* new-v-graph)]
-        (when graph-parent (-add-child! graph-parent new-graph))
+      (let [new-graph (generate-graph* new-v-graph)]
+        (when graph-parent (g/-add-child! graph-parent new-graph))
         new-graph)
 
       ;; There is no virtual node here so remove and destroy the graph
@@ -617,11 +577,11 @@ the provided object."
 
       ;; The two virtual graph types are different, create the new and replace the old
       (not= (v-graph/type-desc new-v-graph) (v-graph/type-desc cur-v-graph))
-      (let [new-graph (reify-virtual-graph* new-v-graph)]
+      (let [new-graph (generate-graph* new-v-graph)]
         (when (satisfies? IGenerator graph)
           (-copy-generator graph new-graph))
         (when graph-parent
-          (-replace-child-at! graph-parent new-graph parent-child-index))
+          (g/-replace-child-at! graph-parent new-graph parent-child-index))
         (destroy-graph! graph)
         new-graph)
 
@@ -632,7 +592,7 @@ the provided object."
 
 (defn- add-dirty-generators!
   "Add all the dirty generators to the apply graph stack"
-  ;; XXX: Make this compare all paths and set the dirty flag. It's horribly inefficient but will fix later
+  ;; XXX: remove this once generators are straightened out
   []
   (let [dirty-generators (get-dirty-generators)
         gen-count (count dirty-generators)]
@@ -640,9 +600,9 @@ the provided object."
       (when (< i gen-count)
         (let [graph (nth dirty-generators i)
               new-v-graph (-get-generator-virtual-graph graph)
-              graph-parent (-get-parent graph)
+              graph-parent (g/-get-parent graph)
               parent-child-index (when graph-parent
-                                   (-child-index graph-parent graph))]
+                                   (g/-child-index graph-parent graph))]
           (swap! **apply-graph-queue*
                  conj {:graph graph
                        :new-v-graph new-v-graph
@@ -651,12 +611,12 @@ the provided object."
           (recur (inc i)))))))
 
 
-(defn- apply-virtual-graph!*
+(defn- rektify-graph*
   [graph new-v-graph]
   (assert (nil? **apply-graph-queue*))
   (binding [**apply-graph-queue* (atom #queue [])]
-    (let [head-parent (-get-parent graph)
-          head-child-index (when head-parent (-child-index head-parent graph))
+    (let [head-parent (g/-get-parent graph)
+          head-child-index (when head-parent (g/-child-index head-parent graph))
           head (apply-virtual-node-diff
                  graph new-v-graph head-parent head-child-index)]
       (loop []
@@ -690,9 +650,9 @@ the provided object."
   will throw an exception if called outside of a `:render  function."
   {:doc/format :markdown}
   [ks f & args]
-  (assert (some? **cur-state*)
+  (assert (some? **next-state*)
           "Can not call `update-in-state` outside of a generator's `:render` method")
-  (apply swap! **cur-state* update-in ks f args))
+  (apply swap! **next-state* update-in ks f args))
 
 
 (defn assoc-in-state
@@ -708,9 +668,9 @@ the provided object."
   will throw an exception if called outside of a `:render  function."
   {:doc/format :markdown}
   [ks v]
-  (assert (some? **cur-state*)
+  (assert (some? **next-state*)
           "Can not call `assoc-in-state` outside of a generator's `:render` method")
-  (swap! **cur-state* assoc-in ks v))
+  (swap! **next-state* assoc-in ks v))
 
 
 (defn get-in-state
@@ -720,14 +680,14 @@ the provided object."
   ([ks]
    (get-in-state ks nil))
   ([ks not-found]
-   (assert (and (some? *prev-state*) (some? *observed-key-paths*))
+   (assert (and (some? *cur-state*) (some? *observed-key-paths*))
            "Can not call `get-in-state `outside of generator's render function and without a state atom.")
-   (let [val (get-in *prev-state* ks not-found)]
+   (let [val (get-in *cur-state* ks not-found)]
      (assoc! *observed-key-paths* ks val)
      val)))
 
 
-(defn re-render-graph!
+(defn rektify-graph
   "Given a real graph, and a virtual graph, apply changes in the
   virtual graph to the real graph and return a real graph. If head of the
   virtual graph is the same type of object as the current real graph, the
@@ -735,7 +695,7 @@ the provided object."
   created. If a state atom is provided it should be a map, if none is provided
   then the state will be empty."
   ([cur-graph new-virtual-graph]
-   (re-render-graph! cur-graph new-virtual-graph (atom {})))
+   (rektify-graph cur-graph new-virtual-graph (atom {})))
   ([cur-graph new-virtual-graph *state]
    (assert (or (nil? new-virtual-graph) (v-graph/generator? new-virtual-graph))
            "The virtual graph's head must be a generator or nil")
@@ -744,22 +704,21 @@ the provided object."
    (assert (or (nil? new-virtual-graph)
                (v/virtual-node? new-virtual-graph))
            "An invalid virtual graph was provided")
-   (binding [*prev-state* (when *state @*state)
-             **cur-state* *state]
-     (dirty-generators! *prev-state*)
+   (binding [*cur-state* @*state
+             **next-state* *state]
      (if cur-graph
-       (apply-virtual-graph!* cur-graph new-virtual-graph)
-       (reify-virtual-graph* new-virtual-graph)))))
+       (rektify-graph* cur-graph new-virtual-graph)
+       (generate-graph* new-virtual-graph)))))
 
 
-(defn reify-virtual-graph
+(defn generate-graph
   "Create an object graph from the given virtual graph. If a state atom is
   provided it should be a map, if none is provided then the state will be
   an empty map."
   ([v-graph]
-   (reify-virtual-graph v-graph (atom {})))
+   (generate-graph v-graph (atom {})))
   ([v-graph *state]
-   (re-render-graph! nil v-graph *state)))
+   (rektify-graph nil v-graph *state)))
 
 
 (defn get-existing-object-properties
