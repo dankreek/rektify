@@ -118,7 +118,7 @@
              props (nth virtual-node 2 nil)
              children (nth virtual-node 3 nil)]
          (and (keyword? node-type)
-              (if (= node-type v-graph/generator-key)
+              (if (= node-type v-graph/gen-key)
                 (or (map? type-desc) (fn? type-desc))
                 (map? type-desc))
               (map? props)

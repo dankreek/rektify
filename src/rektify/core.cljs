@@ -291,7 +291,7 @@ the provided object."
 
       (-get-generator-virtual-graph
         [this]
-        [v-graph/generator-key gen-desc @*props])
+        [v-graph/gen-key gen-desc @*props])
 
       (-get-generator-desc [this] gen-desc)
 
@@ -748,7 +748,7 @@ the provided object."
    (assert (v/valid-object-desc-keys? object-desc)
            (str "The object description map contains the following invalid keys: "
                 (v/pp-set (v/invalid-object-desc-keys object-desc))))
-   [v-graph/object-key object-desc props children]))
+   [v-graph/obj-key object-desc props children]))
 
 
 (defn generator-v-node
@@ -760,7 +760,7 @@ the provided object."
    (assert (or (fn? gen-desc)
                (map? gen-desc))
            "The generator description should be either a generator map or a function which returns a generator map.")
-   [v-graph/generator-key gen-desc props nil]))
+   [v-graph/gen-key gen-desc props nil]))
 
 
 (defn extend-existing-obj!
