@@ -13,11 +13,6 @@
   and updated, and then all the state that was updated it updated in the
   generator node and returned.
 
-  During any lifecycle method the generator's local state and the global state
-  are all immutable. An atom local to the rektify namespace will exist ot allow
-  mutation of local state but it the changes won't be visible to the generator
-  until the next lifecycle function is called.
-
   The lifecycle functions are defined in a generator description which is a
   map with the following keys which define functions. The functions signatures
   are listed following the key:
@@ -116,22 +111,3 @@
     (pre-destroy-fn props local-state obj-tree&)))
 
 
-;; TODO: put these functions directly in core, the *cur-local-state** atom will probaly end up in the rektify namespace
-;(def update-in-state
-;  (partial swap! *cur-local-state** update-in))
-;
-;
-;(def assoc-state
-;  (partial swap! *cur-local-state** assoc))
-;
-;
-;(def assoc-in-state
-;  (partial swap! *cur-local-state** assoc-in))
-;
-;
-;(def dissoc-state
-;  (partial swap! *cur-local-state** dissoc))
-;
-;
-;(def swap-state
-;  (partial swap! *cur-local-state**)
