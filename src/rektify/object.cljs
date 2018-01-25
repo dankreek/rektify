@@ -84,12 +84,35 @@
     function takes 3 parameters. The first being a reference to the object
     itself, the second is the name of the property to be set, and the third is
     the value to set the property to.
-  ")
+  "
+  (:require [clojure.set :as set]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-(defn- constructor-sig
+(def ^:private required-obj-desc-keys
+  #{:get-parent
+    :add-child
+    :child-index
+    :replace-child-at
+    :remove-child-at
+    :get-children
+    :constructor
+    :prop-map})
+
+
+(def ^:private optional-obj-desc-keys
+  #{:default-props
+    :constructor-list
+    :post-constructor
+    :destructor})
+
+
+(def ^:no-doc valid-obj-desc-keys
+  (set/union required-obj-desc-keys optional-obj-desc-keys))
+
+
+(defn ^:private constructor-sig
   "Find the first constructor signature that contains all the property keys
   specified in `init-prop-keys`. If the constructor list is `nil` or empty then
   the default constructor, `[]`, is returned."
@@ -108,7 +131,7 @@
     found-sig))
 
 
-(defn- instantiate
+(defn ^:private instantiate
   "Create a new object with the provided constructor and the given list of
   constructor arguments"
   ([constructor-fn]
@@ -233,7 +256,7 @@
 
 
 (defn set-prop!
-  "Given and object and its object description, set the value of the property.
+  "Given an object and its object description, set the value of the property.
   And optional previous value can be supplied which will allow the setter to
   determine if it should actually go through the work of setting the property if
   the value didn't change."

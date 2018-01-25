@@ -33,14 +33,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-(def gen-key ::generator)
-(def obj-key ::object)
+(def ^:private gen-key ::generator)
+(def ^:private obj-key ::object)
 
-
-(def type-index 0)
-(def desc-index 1)
-(def props-index 2)
-(def children-index 3)
+(def ^:private type-index 0)
+(def ^:private desc-index 1)
+(def ^:private props-index 2)
+(def ^:private children-index 3)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -170,3 +169,6 @@
   (meta v-node))
 
 
+(defn swap-state
+  [v-node f & args]
+  (with-meta v-node (apply f (state v-node) args)))
