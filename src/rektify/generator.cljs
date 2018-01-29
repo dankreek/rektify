@@ -44,7 +44,7 @@
     object tree will be manually destroyed during the rektification process, so
     it is not necessary to do any of that here.
   "
-  (:require [rektify.virtual-graph :as vg]
+  (:require [rektify.virtual-tree :as vt]
             [rektify.validation :as valid]
             [clojure.set :as set]))
 
@@ -70,20 +70,52 @@
 
 (defn generator-desc?
   "Is this map a valid generator description?"
-  [generator]
-  (and (map? generator)
-       (let [gen-key-set (set (keys generator))]
+  [gen-desc]
+  (and (map? gen-desc)
+       (let [gen-key-set (set (keys gen-desc))]
          (and (valid/valid-keys? valid-generator-methods gen-key-set)
               (valid/required-keys? required-generator-methods gen-key-set)))))
+
+
+(defn generator?
+  "Is this a valid generator node?"
+  [generator]
+  (and (vt/generator? generator)
+       (generator-desc? (vt/type-desc generator))))
+
+
+(defn invalid-gen-desc-msg
+  "Display a human message describing what's wrong with an invalid generator
+  description"
+  [gen-desc]
+  (let [key-set (keys gen-desc)
+        invalid-keys (valid/invalid-keys
+                       valid-generator-methods key-set)
+        missing-keys (valid/missing-required-keys
+                       required-generator-methods key-set)]
+    (str "Invalid generator description: "
+         (when (not= #{} invalid-keys)
+           "The following keys are invalid: " (valid/pp-set invalid-keys) ".")
+         (when (not= #{} missing-keys)
+           "The following required keys are missing: " (valid/pp-set missing-keys)))))
+
+
+(defn invalid-generator-msg
+  "Display a human error message describing what's wrong with an invalid
+  generator."
+  [generator]
+  (let [gen-desc (vt/type-desc generator)]
+    (invalid-gen-desc-msg gen-desc)))
 
 
 (defn init
   "Given a generator descriptor, call its init method with the provided props.
 
   Return its return value."
-  [gen-desc props]
+  [gen-desc props children]
   (when-let [init-fn (get gen-desc :init)]
-    (init-fn props)))
+    (init-fn props children)
+    nil))
 
 
 (defn generate
@@ -92,8 +124,11 @@
 
   Return the generated v-tree."
   [gen-desc props local-state children]
-  (let [generate-fn (get gen-desc :generate)]
-    (generate-fn props local-state children)))
+  (let [generate-fn (get gen-desc :generate)
+        v-tree (generate-fn props local-state children)]
+    (assert (or (nil? v-tree) (vt/node? v-tree))
+            ":generate returned an invalid virtual tree")
+    v-tree))
 
 
 (defn post-generate
@@ -109,5 +144,6 @@
   [gen-desc props local-state obj-tree&]
   (when-let [pre-destroy-fn (get gen-desc :pre-destroy)]
     (pre-destroy-fn props local-state obj-tree&)))
+
 
 

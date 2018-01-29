@@ -1,10 +1,10 @@
-(ns rektify.virtual-graph
+(ns rektify.virtual-tree
   "
-  # Virtual graph query, creation and manipulation for Rektify.
+  # Virtual tree query, creation and manipulation for Rektify.
 
-  In Rektify a virtual graph is much like the virtual DOM in React. It is itself
-  a graph which represents the desired state of an object tree. Under the hood,
-  a virtual graph node is a vector with 4 elements:
+  In Rektify a virtual tree is much like the virtual DOM in React. It is itself
+  a tree which represents the desired state of an object tree. Under the hood,
+  a virtual tree node is a vector with 4 elements:
 
   ```clojure
   [type-key description properties children]
@@ -80,12 +80,12 @@
 
 (defn node?
   "Is `virtual-node` a valid virtual node?"
-  [virtual-node]
-  (if (vector? virtual-node)
-    (let [type (get virtual-node type-index)
-          desc (get virtual-node desc-index)
-          props (get virtual-node props-index)
-          children (get virtual-node children-index)]
+  [v-node]
+  (if (vector? v-node)
+    (let [type (get v-node type-index)
+          desc (get v-node desc-index)
+          props (get v-node props-index)
+          children (get v-node children-index)]
       (and (or (= obj-key type) (= gen-key type))
            (map? desc)
            (or (nil? props) (map? props))
@@ -95,63 +95,63 @@
 
 (defn object?
   "Does this virtual node represent an object?"
-  [virtual-node]
-  (= obj-key (get virtual-node type-index)))
+  [v-node]
+  (= obj-key (get v-node type-index)))
 
 
 (defn generator?
   "Does this virtual node represent a generator?"
-  [virtual-node]
-  (= gen-key (get virtual-node type-index)))
+  [v-node]
+  (= gen-key (get v-node type-index)))
 
 
 (defn props
   "Return the virtual node's properties"
-  [virtual-node]
-  (get virtual-node props-index {}))
+  [v-node]
+  (get v-node props-index {}))
 
 
 (defn type-desc
   "Return the virtual node's type description"
-  [virtual-node]
-  (get virtual-node desc-index))
+  [v-node]
+  (get v-node desc-index))
 
 
 (defn children
-  "Gets the sequence of children from a virtual graph node."
-  [virtual-graph]
-  (get virtual-graph children-index))
+  "Gets the sequence of children from a virtual tree node."
+  [v-node]
+  (get v-node children-index))
 
 
 (defn update-props
   "Returns the virtual node with its properties changed to the `new-props `."
-  [virtual-node new-props]
-  (assert (node? virtual-node))
+  [v-node new-props]
+  (assert (node? v-node))
   (assert (or (nil? new-props)
               (map? new-props)))
-  (assoc virtual-node props-index new-props))
+  (assoc v-node props-index new-props))
 
 
 (defn update-children
   "Return a new virtual node with the same type and properties but with a new
   list of children."
-  [virtual-node new-children]
-  (assert (node? virtual-node))
+  [v-node new-children]
+  (assert (node? v-node))
   (assert (or (nil? new-children)
               (sequential? new-children)))
-  (assoc virtual-node children-index new-children))
+  (assoc v-node children-index new-children))
 
 
 (defn node=
   "Test to see if the type and properties of each virtual graph node are the
   same. Does not verify the the child list is the same."
-  [v-graph-1 v-graph-2]
-  (and (= (get v-graph-1 type-index)
-          (get v-graph-2 type-index))
-       (= (type-desc v-graph-1)
-          (type-desc v-graph-2))
-       (= (props v-graph-1)
-          (props v-graph-2))))
+  [v-node-1 v-node-2]
+  (and (= (get v-node-1 type-index)
+          (get v-node-2 type-index))
+       (= (type-desc v-node-1)
+          (type-desc v-node-2))
+       (= (props v-node-1)
+          (props v-node-2))))
 
 
 (defn with-state
@@ -172,3 +172,8 @@
 (defn swap-state
   [v-node f & args]
   (with-meta v-node (apply f (state v-node) args)))
+
+
+(defn merge-state
+  [v-node additional-state]
+  (with-meta v-node (merge (state v-node) additional-state)))

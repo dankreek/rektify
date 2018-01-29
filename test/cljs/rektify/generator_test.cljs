@@ -1,6 +1,7 @@
 (ns rektify.generator-test
   (:require [clojure.test :refer-macros [deftest is testing run-tests]]
-            [rektify.generator :as gen]))
+            [rektify.generator :as gen]
+            [rektify.virtual-tree :as vt]))
 
 
 (deftest generator-desc?
@@ -23,16 +24,17 @@
   (testing "if defined, init is called"
     (let [called-with* (atom nil)
           props {:a 1}
-          init-fn (fn [got-props]
-                    (reset! called-with* got-props))
+          children [1 2 3]
+          init-fn (fn [& args]
+                    (reset! called-with* args))
           gen-desc {:init init-fn
-                    :generate (fn [a b c])}
-          ret-val (gen/init gen-desc props)]
-      (is (= ret-val @called-with*)
-          "The correct arg was passed and a return value was returned")))
+                    :generate (fn [a b c])}]
+      (gen/init gen-desc props children)
+      (is (= [props children] @called-with*)
+          "The correct args were passed to init")))
 
   (testing "no operation if no init function was defined"
-    (is (nil? (gen/init {:generate (fn [a b c])} {:a 1})))))
+    (is (nil? (gen/init {:generate (fn [a b c])} {:a 1} [])))))
 
 
 (deftest generate
@@ -41,7 +43,7 @@
           props {:tt 1}
           state {:tt 2}
           children []
-          ret-val [:poop]
+          ret-val (vt/generator {:generate (fn [_ _ _])})
           gen-desc {:generate (fn [a b c]
                                (reset! called-with* [a b c])
                                ret-val)}]
@@ -78,4 +80,4 @@
       (is (= [props state tree&] @called-with*))))
 
   (testing "pre-destroy not called if not defined"
-    (is (= nil (gen/pre-destroy {:generate (fn [a b c])} nil nil)))))
+    (is (= nil (gen/pre-destroy {:generate (fn [a b c])} nil nil nil)))))

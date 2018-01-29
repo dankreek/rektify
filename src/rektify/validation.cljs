@@ -2,7 +2,7 @@
   "Definitions and functions used to validate parameters passed to functions."
   (:require [clojure.set :as set]
             [clojure.string :as str]
-            [rektify.virtual-graph :as v-graph]))
+            [rektify.virtual-tree :as v-graph]))
 
 
 (defn- required-keys?

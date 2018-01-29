@@ -1,7 +1,7 @@
-(ns rektify.virtual-graph-test
+(ns rektify.virtual-tree-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
             [test.classes-test :as classes]
-            [rektify.virtual-graph :as vg]))
+            [rektify.virtual-tree :as vg]))
 
 
 (deftest v-node-create-and-test
