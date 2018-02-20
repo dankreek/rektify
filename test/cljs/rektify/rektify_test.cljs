@@ -32,6 +32,22 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
+(deftest new-gen-state
+  (let [gen (vt/generator {})
+        init-state {:a "a"}
+        gen-w-state (rekt/new-gen-state gen init-state)]
+    (is (= init-state @(rekt/gen-state-atom gen-w-state)))))
+
+
+(deftest merge-gen-state
+  (let [init-state {:a "a"}
+        gen (rekt/new-gen-state (vt/generator {}) init-state)
+        next-state {:a "A", :b "C"}]
+    (rekt/merge-gen-state gen next-state)
+    (is (= next-state @(rekt/gen-state-atom gen)))))
+
+
+
 (deftest reify-generator
   (testing "create o-tree:"
     (testing "no tree"
@@ -72,7 +88,7 @@
                                (one-fish {}
                                  (blue-fish {}) child-gen (one-fish {})))})
             o-tree& (-> gen
-                      (rekt/reify-generator nil)
+                      (rekt/reify-generator)
                       (rekt/&o-tree))
             fz (classes/fish-zip o-tree&)]
         (is (instance? classes/OneFish o-tree&))
@@ -151,8 +167,7 @@
                                       (is (= state-2 state))
                                       (reset! rekt/**cur-local-state* state-3))})
               next-gen (rekt/reify-generator gen nil)]
-          (is (= state-3 (:rektify.rektify/local-state
-                           (vt/state next-gen)))))))
+          (is (= state-3 (rekt/local-state next-gen))))))
 
     (testing "generator with generator children:"
       (testing "called in order with correct arguments"
@@ -200,9 +215,8 @@
                                              "parent :post-generate called in correct order")
                                          (is (= [gen-props nil &obj]
                                                 [props state &obj])
-                                             "parent :post-generate pass correct args"))}
-              reified-gen (rekt/reify-generator
-                            (vt/generator gen-desc gen-props))]
+                                             "parent :post-generate pass correct args"))}]
+          (rekt/reify-generator (vt/generator gen-desc gen-props))
           (is (= (rekt/&o-tree reify-generator) @*&gen-obj)
               "&o-tree generated was passed into child :post-generate")))
 
@@ -213,13 +227,13 @@
               child-gen-desc {:init (fn [_props _children]
                                       (is (= nil @rekt/**cur-local-state*))
                                       (reset! rekt/**cur-local-state* child-state-0))
-                              :generate (fn [_props state _children]
+                              :generate (fn [_props _state _children]
                                           (is (= child-state-0
                                                  @rekt/**cur-local-state*))
                                           (reset! rekt/**cur-local-state*
                                                   child-state-1)
                                           nil)
-                              :post-generate (fn [_props state _&obj]
+                              :post-generate (fn [_props _state _&obj]
                                                (is (= child-state-1
                                                       @rekt/**cur-local-state*))
                                                (reset! rekt/**cur-local-state*
@@ -229,20 +243,19 @@
               parent-state-2 {:c 0}
               gen-desc {:init (fn [_props _children]
                                 (is (= nil @rekt/**cur-local-state*))
-                                (reset! rekt/**cur-local-state*))
-                        :generate (fn [_props state _children]
+                                (reset! rekt/**cur-local-state* parent-state-0))
+                        :generate (fn [_props _state _children]
                                     (is (= parent-state-0)
                                         @rekt/**cur-local-state*)
                                     (reset! rekt/**cur-local-state*
                                             parent-state-1)
                                     (vt/generator child-gen-desc))
-                        :post-generate (fn [_props state _&obj]
+                        :post-generate (fn [_props _state _&obj]
                                          (is (= parent-state-1
                                                 @rekt/**cur-local-state*))
                                          (reset! rekt/**cur-local-state*
                                                  parent-state-2))}
-              gen (rekt/reify-generator (vt/generator gen-desc))
-              gen-state (vt/state gen)]
+              gen (rekt/reify-generator (vt/generator gen-desc))]
           (is (= parent-state-2 (rekt/local-state gen)))
           (is (= child-state-2 (-> gen
                                  rekt/child-generators
@@ -277,6 +290,173 @@
                    rekt/child-generators
                    first
                    rekt/subscriptions))))))))
+
+
+(deftest destroy-generator
+  (testing "objects in v-tree are correctly destroyed:"
+
+    (testing "generator with no v-tree"
+      (let [gen-desc {:generate (fn [_ _ _] nil)}
+            reified-gen (rekt/reify-generator (vt/generator gen-desc))]
+        (is (= nil (rekt/&o-tree reified-gen)))
+        (rekt/destroy-generator reified-gen)))
+
+    (testing "generator has a v-tree with no child generators:"
+      (let [gen-desc {:generate (fn [_ _ _]
+                                  (one-fish {}
+                                    (red-fish {}) (blue-fish {})))}
+            reified-gen (rekt/reify-generator (vt/generator gen-desc))
+            fz (classes/fish-zip (rekt/&o-tree reified-gen))
+            o (z/node fz)
+            r (-> fz z/down z/node)
+            b (-> fz z/down z/right z/node)]
+        (is (= false (.isDestroyed o)))
+        (is (= false (.isDestroyed r)))
+        (is (= false (.isDestroyed b)))
+
+        (is (= nil (rekt/destroy-generator reified-gen))
+            "destroy-generator returns nil")
+
+        (is (= true (.isDestroyed o)))
+        (is (= true (.isDestroyed r)))
+        (is (= true (.isDestroyed b)))))
+
+    (testing "generator has a v-tree with a nested generator"
+      (let [child-gen-desc {:generate (fn [_ _ _]
+                                        (one-fish {}))}
+            parent-gen-desc {:generate (fn [_ _ _]
+                                         (one-fish {}
+                                           (red-fish {})
+                                           (vt/generator child-gen-desc)
+                                           (blue-fish {})))}
+            reified-gen (rekt/reify-generator (vt/generator parent-gen-desc))
+            fz (classes/fish-zip (rekt/&o-tree reified-gen))
+            o1 (z/node fz)
+            r (-> fz z/down z/node)
+            o2 (-> fz z/down z/right z/node)
+            b (-> fz z/down z/right z/right z/node)]
+        (is (= false (.isDestroyed o1)))
+        (is (= false (.isDestroyed r)))
+        (is (= false (.isDestroyed o2)))
+        (is (= false (.isDestroyed b)))
+
+        (is (= nil (rekt/destroy-generator reified-gen)))
+
+        (is (= true (.isDestroyed o1)))
+        (is (= true (.isDestroyed r)))
+        (is (= true (.isDestroyed o2)))
+        (is (= true (.isDestroyed b)))))
+
+    (testing ":pre-destroy lifecycle function:"
+      (testing "called on generator that has no v-tree"
+        (let [*was-called (atom false)
+              gen-props {:a 1}
+              gen-state {:b 12}
+              gen-desc {:generate (fn [_ _ _]
+                                    (rekt/reset-local-state gen-state)
+                                    nil)
+                        :pre-destroy (fn [props state &obj-tree]
+                                       (reset! *was-called true)
+                                       (is (= gen-state state))
+                                       (is (= gen-props props))
+                                       (is (= nil &obj-tree)))}
+              reified-gen (rekt/reify-generator
+                            (vt/generator gen-desc gen-props))]
+          (rekt/destroy-generator reified-gen)
+          (is (= true @*was-called))))
+
+      (testing "called on generator with v-tree with no generator children"
+        (let [*was-called (atom false)
+              gen-props {:a 1}
+              gen-state {:b 12}
+              *&gen-obj (atom nil)
+              gen-desc {:generate (fn [_ _ _]
+                                    (rekt/reset-local-state gen-state)
+                                    (one-fish {}))
+                        :pre-destroy (fn [props state &obj-tree]
+                                       (reset! *was-called true)
+                                       (is (= gen-state state))
+                                       (is (= gen-props props))
+                                       (is (= @*&gen-obj &obj-tree)))}
+              reified-gen (rekt/reify-generator
+                            (vt/generator gen-desc gen-props))]
+          (reset! *&gen-obj (rekt/&o-tree reified-gen))
+          (rekt/destroy-generator reified-gen)
+          (is (= true @*was-called))))
+
+      (testing "is called in order on generator with nested generators in v-tree"
+        (let [*call-order (atom 0)
+              child-gen-props {:poop "stewart"}
+              child-gen-state {:snoop "dogg"}
+              child-gen-desc {:generate (fn [_ _ _]
+                                          (rekt/reset-local-state child-gen-state)
+                                          (red-fish {}))
+                              :pre-destroy (fn [props state &obj-tree]
+                                             (is (= 1 (swap! *call-order inc)))
+                                             (is (= child-gen-props props))
+                                             (is (= child-gen-state state))
+                                             (is (instance? classes/RedFish
+                                                            &obj-tree)))}
+              parent-gen-props {:one "potato"}
+              parent-gen-state {:two "potatothreepotatofour"}
+              parent-gen-desc {:generate (fn [_ _ _]
+                                           (rekt/reset-local-state parent-gen-state)
+                                           (one-fish {}
+                                             (vt/generator child-gen-desc
+                                                           child-gen-props)))
+                               :pre-destroy (fn [props state &obj-tree]
+                                              (is (= 2 (swap! *call-order inc)))
+                                              (is (= parent-gen-props props))
+                                              (is (= parent-gen-state state))
+                                              (is (instance? classes/OneFish
+                                                             &obj-tree)))}
+              reified-gen (rekt/reify-generator (vt/generator parent-gen-desc
+                                                              parent-gen-props))]
+          (rekt/destroy-generator reified-gen)
+          (is (= 2 @*call-order)))))))
+
+
+;; XXX: write test
+(deftest destroy-v-tree
+  (testing "destroy v-tree with no generator children"
+    (let [v-tree (one-fish {}
+                   (red-fish {}) (blue-fish {}))
+          reified-v-tree (rekt/reify-v-tree v-tree (atom []))
+          &o-tree (rekt/&o-tree reified-v-tree)
+          fz (classes/fish-zip &o-tree)
+          &r (-> fz z/down z/node)
+          &b (-> fz z/down z/right z/node)]
+      (is (nil? (rekt/destroy-v-tree reified-v-tree)))
+      (is (= true (.isDestroyed &o-tree)))
+      (is (= true (.isDestroyed &r)))
+      (is (= true (.isDestroyed &b)))))
+
+  (testing "destroy v-tree with generator children"
+    (let [gen-props {:too "hot"}
+          gen-state {:in-the "hot tub"}
+          *was-called (atom false)
+          gen-desc {:generate (fn [_ _ _]
+                                (rekt/reset-local-state gen-state)
+                                (blue-fish {}))
+                    :pre-destroy (fn [props state &obj-tree]
+                                   (reset! *was-called true)
+                                   (is (= gen-props props))
+                                   (is (= gen-state state))
+                                   (is (instance? classes/BlueFish &obj-tree)))}
+          *child-gens (atom [])
+          v-tree (one-fish {}
+                   (red-fish {}) (vt/generator gen-desc gen-props))
+          reified-v-tree (rekt/reify-v-tree v-tree *child-gens)
+          fz (classes/fish-zip (rekt/&o-tree reified-v-tree))
+          &o (z/node fz)
+          &r (-> fz z/down z/node)
+          &b (-> fz z/down z/right z/node)]
+      (is (nil? (rekt/destroy-v-tree reified-v-tree)))
+      (is (= true @*was-called)
+          "Generator's :pre-destroy function called")
+      (is (= true (.isDestroyed &o)))
+      (is (= true (.isDestroyed &r)))
+      (is (= true (.isDestroyed &b))))))
 
 
 (deftest get-in-state

@@ -18,7 +18,9 @@
   * `:destructor` _(optional)_ a function which is called on an object when it
     is being destroyed. The function will have the signature `[obj-desc obj&]`
     where `obj-desc` is the object description map for the object, and `obj&`
-    which is a reference to the object being destroyed.
+    which is a reference to the object being destroyed. The `:destructor`
+    function should destroy all of its children as well as remove itself from
+    its parent, if a parent exists.
 
   * `:constructor-list` _(optional)_ the list of constructor signatures which
     can be used to instantiate the object being described.
@@ -216,10 +218,9 @@
 
 (defn destroy!
   "If a `:destructor` exists in the `obj-desc` call it on the object, otherwise
-  do nothing. This function can not be called on an object with children."
+  do nothing. The object's `:destructor` should destroy all child objects and
+  remove itself from its parent, if a parent exists."
   [obj-desc obj& ]
-  (assert (= 0 (count (children obj-desc obj&)))
-          "An object with children can not be destroyed using `destroy!`.")
   (when-let [destructor-fn (:destructor obj-desc)]
     (destructor-fn obj-desc obj&)))
 

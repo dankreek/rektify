@@ -82,6 +82,12 @@ test.classes.Fish.prototype.getParent = function() {
 };
 
 test.classes.Fish.prototype.destroy = function() {
+  if (this._children.length > 0) {
+    while (this._children.length > 0) {
+      this.removeChildAt(0).destroy()
+    }
+  }
+
   if (this._parent) {
     this._parent.removeChild(this);
   }

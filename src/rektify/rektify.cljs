@@ -2,14 +2,19 @@
   "
   ## Generator state
 
-  * `::&o-parent` - Reference to the object which is the parent of the
-                    generator's object v-tree.
-  * `::o-parent-desc - The object description of the parent object
-  * `::v-tree` - The generator's most recently generated v-tree
-  * `::child-generators` - A sequence of the generator child in the generator's
-                           v-tree
-  * `::local-state` - The generator's local state, made available to lifecycle
-                      functions.
+  A generator's state is kept in an atom on the node's metadata at a key called
+  `::*gen-state`
+
+  This atom contains the keys:
+
+  * `:&o-parent` - Reference to the object which is the parent of the
+                   generator's object v-tree.
+  * `:o-parent-desc - The object description of the parent object
+  * `:v-tree` - The generator's most recently generated v-tree
+  * `:child-generators` - A sequence of the generator child in the generator's
+                          v-tree
+  * `:local-state` - The generator's local state, made available to lifecycle
+                     functions.
 
   ## V-tree state
 
@@ -18,6 +23,12 @@
   (:require [rektify.virtual-tree :as vt]
             [rektify.generator :as g]
             [rektify.object :as o]))
+
+;; XXX: Generator state NEEDS to be held in an atom. During rektification, if
+;; XXX: a generator doesn't need to be regenerated but its children do, the
+;; XXX: state updates that to the children if they need to be generated need to
+;; XXX: be propagated into the generator's v-tree. This can only happen if state
+;; XXX: is kept as a reference type.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
@@ -48,17 +59,94 @@
 
 
 (declare reify-generator)
-
+(declare destroy-v-tree)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
+
+(defn gen-state-atom
+  "Return a generator's state atom"
+  [gen]
+  (get (vt/state gen) ::gen-state))
+
+
+(defn subscriptions
+  [gen]
+  "A generator's subscriptions"
+  (get @(gen-state-atom gen) :global-state-subscriptions))
+
+
+(defn child-generators
+  [gen]
+  "The list of generator children that was produced by this generator's v-tree"
+  (get @(gen-state-atom gen) :child-generators))
+
+
+(defn local-state
+  [gen]
+  (get @(gen-state-atom gen) :local-state))
+
+
+(defn gen-v-tree
+  "Get a reified generator's v-tree"
+  [gen]
+  (get @(gen-state-atom gen) :v-tree))
+
 
 (defn &o-tree
   "A generator or v-tree's object tree, returns `nil` if no object tree exists"
   [v-node]
   (if (vt/generator? v-node)
-    (recur (get (vt/state v-node) ::v-tree))
+    (recur (gen-v-tree v-node))
     (get (vt/state v-node) ::&o-tree)))
+
+
+(defn new-gen-state
+  "A a new state atom to a generator."
+  ([gen]
+   (new-gen-state gen {}))
+  ([gen init-state]
+   (assert (map? init-state) "Generator state must be a map")
+   (vt/with-state gen {::gen-state (atom init-state)})))
+
+
+(defn merge-gen-state
+  "Merge the new generator state with the current generator state and return
+  the generator."
+  [gen new-state]
+  (swap! (gen-state-atom gen) merge new-state)
+  gen)
+
+
+;; XXX: write test
+(defn collect-generator-children
+  "Return a list of all child generators in the v-tree"
+  ([v-tree]
+    ;; XXX: Use a list as an accumulator instead, this is hacky and not how transients are supposed to work (they're not reference types)
+   (let [generators! (transient [])]
+     (collect-generator-children v-tree generators!)
+     (persistent! generators!)))
+  ([v-node generators!]
+   (if (vt/generator? v-node)
+     (conj! generators! v-node)
+     (loop [children (vt/children v-node)]
+       (when (seq children)
+         (collect-generator-children (first children) generators!)
+         (recur (rest children)))))))
+
+
+(defn add-v-tree-to-obj
+  "Add the root object of the reified v-tree to the parent object's children.
+  If the v-tree is a generator update the state with the new parent object info."
+  [v-tree o-parent-desc &o-parent]
+  (let [&obj (&o-tree v-tree)]
+    (when (and &obj o-parent-desc)
+      (o/add-child! o-parent-desc &o-parent &obj)
+      (when (vt/generator? v-tree)
+        ;; Add the object parent info to the generator's state
+        (merge-gen-state v-tree {:&o-parent &o-parent
+                                 :o-parent-desc o-parent-desc})))
+    v-tree))
 
 
 (defn reify-v-tree
@@ -72,42 +160,33 @@
   The `*child-gens` atom is used to keep a sequence of all the child generators
   found in the v-tree, which are themselves reified.
   "
-  ([v-tree *child-gens]
-    (reify-v-tree v-tree *child-gens nil nil))
-  ([v-tree *child-gens parent-obj-desc &parent-obj]
-   (when v-tree
-     (if (vt/object? v-tree)
-       ;; Construct object, attach to parent and return v-node with state info
-       (let [obj-desc (vt/type-desc v-tree)
-             obj-props (vt/props v-tree)
-             v-children (vt/children v-tree)
-             &obj (o/construct-obj! obj-desc obj-props)]
-         (vt/with-state
-           (vt/object obj-desc obj-props
-                      ;; Recursively reify each child and store in the return object
-                      (mapv (fn [v-child]
-                              (let [reified-v-tree (reify-v-tree
-                                                     v-child *child-gens
-                                                     obj-desc &obj)
-                                    &new-o-tree (&o-tree reified-v-tree)]
-                                (when &new-o-tree
-                                  (o/add-child! obj-desc &obj &new-o-tree))
-                                reified-v-tree))
-
-                            v-children))
-           ;; store a reference to the created object in the v-node's state
-           {::&o-tree &obj}))
-       ;; If this is a generator node, reify it, store it in *child-gens and return
-       ;; note that the generator to be reified needs its parent object node info
-       (let [reified-gen (reify-generator
-                           (vt/with-state v-tree
-                                          {::&o-parent &parent-obj
-                                           ::o-parent-desc parent-obj-desc}))]
-         (swap! *child-gens conj reified-gen)
-         reified-gen)))))
+  [v-tree *child-gens]
+  (when v-tree
+    (if (vt/object? v-tree)
+      ;; Construct object, attach to parent and return v-node with state info
+      (let [obj-desc (vt/type-desc v-tree)
+            obj-props (vt/props v-tree)
+            v-children (vt/children v-tree)
+            &obj (o/construct-obj! obj-desc obj-props)]
+        (vt/with-state
+          (vt/object obj-desc obj-props
+                     ;; Recursively reify each child and store in the return object
+                     (mapv (fn [v-child]
+                             (let [reified-v-tree (reify-v-tree
+                                                    v-child *child-gens)]
+                               (add-v-tree-to-obj reified-v-tree obj-desc &obj)
+                               reified-v-tree))
+                           v-children))
+          ;; store a reference to the created object in the v-node's state
+          {::&o-tree &obj}))
+      ;; If this is a generator node, reify it, store it in *child-gens and return
+      (let [reified-gen (reify-generator v-tree)]
+        (swap! *child-gens conj reified-gen)
+        reified-gen))))
 
 
 (defn reify-generator
+  ;; XXX: Docs
   ([gen global-state]
    (assert (or (nil? global-state) (map? global-state)
                "global-state must be nil or a map"))
@@ -118,40 +197,64 @@
    (assert (g/generator? gen) (g/invalid-generator-msg gen))
    (binding [**cur-local-state* (atom nil)
              **global-state-subscriptions* (atom {})]
-     (let [gen-state (vt/state gen)
-           &o-parent (::&o-parent gen-state)
-           o-parent-desc (::o-parent-desc gen-state)
-           gen-desc (vt/type-desc gen)
+     (let [gen-desc (vt/type-desc gen)
            gen-props (vt/props gen)
            gen-children (vt/children gen)]
        (g/init gen-desc gen-props gen-children)
        (let [*v-tree-gen-children (atom nil)
              v-tree (-> gen-desc
                       (g/generate gen-props @**cur-local-state* gen-children)
-                      (reify-v-tree *v-tree-gen-children o-parent-desc &o-parent))
+                      (reify-v-tree *v-tree-gen-children))
              &o-tree (&o-tree v-tree)]
          (g/post-generate gen-desc gen-props @**cur-local-state* &o-tree)
-         (vt/merge-state
+         (new-gen-state
            gen
-           {::v-tree v-tree
-            ::local-state @**cur-local-state*
-            ::child-generators @*v-tree-gen-children
-            ::global-state-subscriptions @**global-state-subscriptions*}))))))
-
-(defn subscriptions
-  [gen]
-  "A generator's subscriptions"
-  (get (vt/state gen) ::global-state-subscriptions))
+           {:v-tree v-tree
+            :local-state @**cur-local-state*
+            :child-generators @*v-tree-gen-children
+            :global-state-subscriptions @**global-state-subscriptions*}))))))
 
 
-(defn child-generators
-  [gen]
-  "The list of generator children that was produced by this generator's v-tree"
-  (get (vt/state gen) ::child-generators))
+(defn destroy-generator
+  "Destroy a generator, its v-tree, all of its descendants."
+  ([gen global-state]
+    (binding [*cur-global-state* global-state]
+      (destroy-generator gen)))
+  ([gen]
+    ;; TODO: Assert generator is reified
+   (assert (g/generator? gen)
+           (g/invalid-gen-desc-msg gen))
+   (let [gen-desc (vt/type-desc gen)
+         gen-props (vt/props gen)
+         gen-state @(gen-state-atom gen)
+         v-tree (get gen-state :v-tree)
+         local-state (get gen-state :local-state)
+         &obj (&o-tree v-tree)]
+     ;; Recurse to children, depth-first
+     (loop [children (get gen-state :child-generators)]
+       (when (seq children)
+         (destroy-generator (first children))
+         (recur (rest children))))
+     (g/pre-destroy gen-desc gen-props local-state &obj)
+     ;; Destroy the v-tree's object tree
+     (when &obj
+       (o/destroy! (vt/type-desc v-tree) &obj))
+     ;; Ensure nothing is returned, could cause issues in calling code
+     nil)))
 
-(defn local-state
-  [gen]
-  (get (vt/state gen) ::local-state))
+
+(defn destroy-v-tree
+  "Destroy all objects in the provided v-tree, depth first."
+  [v-tree]
+  ;; Destroy all the child generators of this v-tree first
+  (loop [child-gens (collect-generator-children v-tree)]
+    (when (seq child-gens)
+      (destroy-generator (first child-gens))
+      (recur (rest child-gens))))
+
+  ;; Destroy the remaining objects in the v-tree
+  (o/destroy! (vt/type-desc v-tree) (&o-tree v-tree))
+  nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Global state retrieval and subscription functions for use inside generator

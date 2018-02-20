@@ -182,7 +182,24 @@
   (testing "destroying an object sets the destroyed flag"
     (let [f0 (new classes/Fish)]
       (.destroy f0)
-      (is (= true (.isDestroyed f0))))))
+      (is (= true (.isDestroyed f0)))))
+
+  (testing "destroying a tree sets the destroyed flag on all objects"
+    (let [f0 (new classes/Fish)
+          f1 (new classes/Fish)
+          f2 (new classes/Fish)
+          f3 (new classes/Fish)]
+      (.addChild f0 f1)
+      (.addChild f0 f2)
+      (.addChild f2 f3)
+      (.destroy f0)
+
+      (is (= true (.isDestroyed f0)))
+      (is (= true (.isDestroyed f1)))
+      (is (= true (.isDestroyed f2)))
+      (is (= true (.isDestroyed f3)))
+
+      (is (nil? (.-_children f0))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

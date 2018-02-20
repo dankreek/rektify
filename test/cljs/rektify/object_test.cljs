@@ -68,16 +68,7 @@
   (testing "destroy! does not call a destructor function if it doesn't exist"
     (let [one-fish (new classes/OneFish)]
       (o/destroy! (dissoc classes/one-fish-desc :destructor) one-fish)
-      (is (= false (.isDestroyed one-fish)))))
-
-  (testing "attempting to destroy an object with children throws an error"
-    (let [one-fish (new classes/OneFish)
-          red-fish (new classes/RedFish)]
-      (o/add-child! classes/one-fish-desc one-fish red-fish)
-      (is (thrown-with-msg?
-            js/Error
-            #"An object with children can not be destroyed"
-            (o/destroy! classes/one-fish-desc one-fish))))))
+      (is (= false (.isDestroyed one-fish))))))
 
 
 (deftest prop
