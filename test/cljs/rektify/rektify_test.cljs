@@ -416,7 +416,6 @@
           (is (= 2 @*call-order)))))))
 
 
-;; XXX: write test
 (deftest destroy-v-tree
   (testing "destroy v-tree with no generator children"
     (let [v-tree (one-fish {}
@@ -459,9 +458,52 @@
       (is (= true (.isDestroyed &b))))))
 
 
+(deftest regenerate
+  (testing ":generate not called on generator that doesn't need regeneration"
+    (testing "without global state"
+      (let [*call-count (atom 0)
+            gen (vt/generator {:generate (fn [_ _ _]
+                                           (swap! *call-count inc)
+                                           (one-fish {}))}
+                              {:a "prop"})
+            reified-gen (rekt/reify-generator gen)
+            *prev-state-atom (rekt/gen-state-atom reified-gen)
+            prev-state @*prev-state-atom
+            &obj (rekt/&o-tree reified-gen)
+            regenerated-gen (rekt/regenerate reified-gen gen)]
+        (is (= 1 @*call-count) ":generate is only called once")
+        (is (= prev-state @(rekt/gen-state-atom regenerated-gen))
+            "Generator state is unchanged after regeneration")
+        (is (= *prev-state-atom (rekt/gen-state-atom regenerated-gen))
+            "State atom is the same instance after regeneration")
+        (is (= &obj (rekt/&o-tree regenerated-gen))
+            "Original object is returned after regeneration")))
+
+    (testing "with global state"
+      (let [*call-count (atom 0)
+            global-state {:beef "cake"}
+            gen (vt/generator {:generate (fn [_ _ _]
+                                           (swap! *call-count inc)
+                                           (rekt/subscribe [:beef])
+                                           (one-fish {}))}
+                              {:a "prop"})
+            reified-gen (rekt/reify-generator gen global-state)
+            *prev-state-atom (rekt/gen-state-atom reified-gen)
+            prev-state @*prev-state-atom
+            &obj (rekt/&o-tree reified-gen)
+            regenerated-gen (rekt/regenerate reified-gen gen global-state)]
+        (is (= 1 @*call-count) ":generate is only called once")
+        (is (= prev-state @(rekt/gen-state-atom regenerated-gen))
+            "Generator state is unchanged after regeneration")
+        (is (= *prev-state-atom (rekt/gen-state-atom regenerated-gen))
+            "State atom is the same instance after regeneration")
+        (is (= &obj (rekt/&o-tree regenerated-gen))
+            "Original object is returned after regeneration")))))
+
+
 (deftest get-in-state
   (testing "global state values are returned"
-    (binding [rekt/*cur-global-state* {:a {:b "c"}}]
+    (binding [rekt/*global-state* {:a {:b "c"}}]
       (is (= {:b "c"} (rekt/get-in-state [:a])))
       (is (= "c" (rekt/get-in-state [:a :b])))))
 
@@ -474,17 +516,17 @@
 
 (deftest subscribe
   (testing "global subscriptions are recorded"
-    (binding [rekt/*cur-global-state* {:a {:b "c"}}
+    (binding [rekt/*global-state* {:a {:b "c"}}
               rekt/**global-state-subscriptions* (atom {})]
       (let [a-val (rekt/subscribe [:a])
             ab-val (rekt/subscribe [:a :b])]
-        (is (= (get-in rekt/*cur-global-state* [:a]) a-val))
-        (is (= (get-in rekt/*cur-global-state* [:a :b]) ab-val))
+        (is (= (get-in rekt/*global-state* [:a]) a-val))
+        (is (= (get-in rekt/*global-state* [:a :b]) ab-val))
         (is (= {[:a] a-val, [:a :b] ab-val}
                @rekt/**global-state-subscriptions*)))))
 
   (testing "nested subscriptions are recorded correctly"
-    (binding [rekt/*cur-global-state* {:a {:b "c"}
+    (binding [rekt/*global-state* {:a {:b "c"}
                                        :c {3 "po"}}
               rekt/**global-state-subscriptions* (atom {})]
       (rekt/subscribe [:a])
@@ -500,7 +542,7 @@
              @rekt/**global-state-subscriptions*))))
 
   (testing "subscribe outside of rektification throws an error"
-    (binding [rekt/*cur-global-state* {}]
+    (binding [rekt/*global-state* {}]
       (is (thrown-with-msg?
             js/Error
             #"can only be accessed during rektification"

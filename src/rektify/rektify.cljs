@@ -15,6 +15,10 @@
                           v-tree
   * `:local-state` - The generator's local state, made available to lifecycle
                      functions.
+  * `:state-subscriptions` - A map of key-paths -> values, where the key-paths
+                             are the generator's subscriptions and the values
+                             are the value of the key-paths into global state
+                             during the last generate/regenerate.
 
   ## V-tree state
 
@@ -42,7 +46,7 @@
                      (throw (js/Error. "Generator state manipulation can only happen during rektification.")))))
 
 
-(def ^:dynamic *cur-global-state*
+(def ^:dynamic *global-state*
   "The current global state available to generators during rektification."
   nil)
 
@@ -56,6 +60,37 @@
   (atom nil
         :validator (fn [_]
                      (throw (js/Error. "Global state can only be accessed during rektification.")))))
+
+
+(defn ^:private reified-generator?
+  "Is the generator a valid generator which as been reified?"
+  [gen]
+  (if (not (g/generator? gen))
+    false
+    (not (nil? (vt/state gen)))))
+
+
+(defn ^:private unreified-generator-msg
+  "Return an error message describing why a value is not a reified generator."
+  [gen]
+  (if (not (g/generator? gen))
+    (g/invalid-generator-msg gen)
+    (let [*gen-state (vt/state gen)]
+      (if (not (instance? Atom *gen-state))
+        "generator has not been reified"))))
+
+
+(defn ^:private update-state-subscriptions
+  "Return the new values for the key-paths in the current subscriptions map"
+  [cur-subscriptions]
+  (loop [key-paths (keys cur-subscriptions)
+         new-subscriptions! (transient {})]
+    (if (seq key-paths)
+      (let [key-path (first key-paths)]
+        (recur (rest key-paths)
+               (assoc! new-subscriptions!
+                       key-path (get-in *global-state* key-path))))
+      (persistent! new-subscriptions!))))
 
 
 (declare reify-generator)
@@ -73,7 +108,7 @@
 (defn subscriptions
   [gen]
   "A generator's subscriptions"
-  (get @(gen-state-atom gen) :global-state-subscriptions))
+  (get @(gen-state-atom gen) :state-subscriptions))
 
 
 (defn child-generators
@@ -191,7 +226,7 @@
    (assert (or (nil? global-state) (map? global-state)
                "global-state must be nil or a map"))
     ;; Make the global state map available to generators for the remainder of the reification
-   (binding [*cur-global-state* global-state]
+   (binding [*global-state* global-state]
      (reify-generator gen)))
   ([gen]
    (assert (g/generator? gen) (g/invalid-generator-msg gen))
@@ -212,13 +247,13 @@
            {:v-tree v-tree
             :local-state @**cur-local-state*
             :child-generators @*v-tree-gen-children
-            :global-state-subscriptions @**global-state-subscriptions*}))))))
+            :state-subscriptions @**global-state-subscriptions*}))))))
 
 
 (defn destroy-generator
   "Destroy a generator, its v-tree, all of its descendants."
   ([gen global-state]
-    (binding [*cur-global-state* global-state]
+    (binding [*global-state* global-state]
       (destroy-generator gen)))
   ([gen]
     ;; TODO: Assert generator is reified
@@ -256,6 +291,46 @@
   (o/destroy! (vt/type-desc v-tree) (&o-tree v-tree))
   nil)
 
+
+(defn regeneration-required?
+  "Given a new generator and the current generator's new subscriptions,
+  determine if the current generator needs to be regenerated."
+  [cur-gen cur-subscriptions new-gen new-subscriptions]
+  (assert (reified-generator? cur-gen)
+          "cur-gen is not a reified generator")
+  (assert (vt/generator? new-gen)
+          "new-gen is not a generator")
+  (assert (= (vt/type-desc cur-gen) (vt/type-desc new-gen))
+          "Checking regeneration requires that both generators are the same type")
+
+  (or ;; Have the props or children changed?
+      (not= cur-gen new-gen)
+      ;; Have the subscriptions changed?
+      (not= cur-subscriptions new-subscriptions)))
+
+
+(defn regenerate
+  ([cur-gen new-gen global-state]
+    (binding [*global-state* global-state]
+      (regenerate cur-gen new-gen)))
+  ([cur-gen new-gen]
+   (assert (reified-generator? cur-gen)
+           (str "cur-gen is not a reified generator: "
+                (unreified-generator-msg cur-gen)))
+   (assert (g/generator? new-gen)
+           (str "new-gen is not a valid generator: "
+                (g/invalid-generator-msg new-gen)))
+
+   (let [*cur-state (gen-state-atom cur-gen)
+         cur-subscriptions (:state-subscriptions @*cur-state)
+         new-subscriptions (update-state-subscriptions cur-subscriptions)]
+     (if (regeneration-required? cur-gen cur-subscriptions
+                                 new-gen new-subscriptions)
+       (throw (js/Error. "regeneration not implemented"))
+       ;; Return the cur-gen if regeneration is not required
+       cur-gen))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Global state retrieval and subscription functions for use inside generator
 ;; lifecycle functions
@@ -263,9 +338,9 @@
 (defn get-in-state
   "Get a val from the global state without subscribing"
   [ks]
-  (assert (map? *cur-global-state*)
+  (assert (map? *global-state*)
           "Either no global state is defined or it is not a map")
-  (get-in *cur-global-state* ks))
+  (get-in *global-state* ks))
 
 
 (defn subscribe
