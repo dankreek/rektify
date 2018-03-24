@@ -498,7 +498,56 @@
         (is (= *prev-state-atom (rekt/gen-state-atom regenerated-gen))
             "State atom is the same instance after regeneration")
         (is (= &obj (rekt/&o-tree regenerated-gen))
-            "Original object is returned after regeneration")))))
+            "Original object is returned after regeneration"))))
+
+  (testing "regeneration yields the same virtual tree"
+    (testing "with single generator"
+      (let [*call-count (atom 0)
+            gen-desc {:generate (fn [_ _ _]
+                                  (swap! *call-count inc)
+                                  (one-fish {}))}
+            reified-gen (rekt/reify-generator (vt/generator gen-desc {:a 1}))
+            &obj (rekt/&o-tree reified-gen)
+            *prev-state-atom (rekt/gen-state-atom reified-gen)
+            prev-state @*prev-state-atom
+            regenerated-gen (rekt/regenerate
+                              reified-gen (vt/generator gen-desc {:b 12}))]
+        (is (= 2 @*call-count)
+            ":generate is called twice")
+        (is (= prev-state @(rekt/gen-state-atom regenerated-gen))
+            "Generator state is unchanged after regeneration")
+        (is (= *prev-state-atom (rekt/gen-state-atom regenerated-gen))
+            "State atom is the same instance after regeneration")
+        (is (= &obj (rekt/&o-tree regenerated-gen))
+            "Original object is returned after regeneration")) )
+
+    (testing "with nested generators"
+      (let [*child-call-count (atom 0)
+            child-gen-desc {:generate (fn [_ _ _]
+                                        (swap! *child-call-count inc)
+                                        (red-fish {}))}
+            *parent-call-count (atom 0)
+            parent-gen-desc {:generate
+                             (fn [_ _ _]
+                               (one-fish {}
+                                (swap! *parent-call-count inc)
+                                 (vt/generator
+                                   child-gen-desc {:changing-prop @*parent-call-count})))}
+            reified-gen (rekt/reify-generator (vt/generator
+                                                parent-gen-desc {:a 1}))
+            &o-tree (rekt/&o-tree reified-gen)
+            regenerated-gen (rekt/regenerate
+                              reified-gen (vt/generator
+                                            parent-gen-desc {:b 12}))]
+        (is (= 2 @*parent-call-count)
+            "parent :generate is called twice")
+        (is (= 2 @*child-call-count)
+            "child :generate is called twice")
+        (is (= &o-tree (rekt/&o-tree regenerated-gen))
+            "Original parent object is returned after regeneration")
+        (is (= (.getChildAt &o-tree 0)
+               (.getChildAt (rekt/&o-tree regenerated-gen) 0))
+            "Original child object is returned after regeneration")))))
 
 
 (deftest get-in-state

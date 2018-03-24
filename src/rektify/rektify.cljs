@@ -326,6 +326,7 @@
          new-subscriptions (update-state-subscriptions cur-subscriptions)]
      (if (regeneration-required? cur-gen cur-subscriptions
                                  new-gen new-subscriptions)
+       ;; XXX: Do the regeneration
        (throw (js/Error. "regeneration not implemented"))
        ;; Return the cur-gen if regeneration is not required
        cur-gen))))
