@@ -524,21 +524,20 @@
     (testing "with nested generators"
       (let [*child-call-count (atom 0)
             child-gen-desc {:generate (fn [_ _ _]
+                                        (rekt/subscribe [:a])
                                         (swap! *child-call-count inc)
                                         (red-fish {}))}
             *parent-call-count (atom 0)
             parent-gen-desc {:generate
                              (fn [_ _ _]
+                               (rekt/subscribe [:a])
                                (swap! *parent-call-count inc)
                                (one-fish {}
-                                 (vt/generator
-                                   child-gen-desc {:changing-prop @*parent-call-count})))}
-            reified-gen (rekt/reify-generator (vt/generator
-                                                parent-gen-desc {:a 1}))
+                                 (vt/generator child-gen-desc)))}
+            reified-gen (rekt/reify-generator (vt/generator parent-gen-desc) {:a 1})
             &o-tree (rekt/&o-tree reified-gen)
             regenerated-gen (rekt/regenerate
-                              reified-gen (vt/generator
-                                            parent-gen-desc {:b 12}))]
+                              reified-gen (vt/generator parent-gen-desc) {:a 2})]
         (is (= 2 @*parent-call-count)
             "parent :generate is called twice")
         (is (= 2 @*child-call-count)

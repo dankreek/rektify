@@ -45,7 +45,7 @@
   nil)
 
 
-;; XXX: If atoms work, try and make this a transient map instead
+;; TODO: If atoms work, try and make this a transient map instead
 (def ^:dynamic **global-state-subscriptions*
   "A map atom which tracks the current generator's subscriptions to global
   state during reification or rektification. The keys are the key paths
@@ -156,11 +156,11 @@
     (vt/with-state new-gen {::gen-state *gen-state})))
 
 
-;; XXX: write test
+;; TODO: write test
 (defn collect-generator-children
   "Return a list of all child generators in the v-tree"
   ([v-tree]
-    ;; XXX: Use a list as an accumulator instead, this is hacky and not how transients are supposed to work (they're not reference types)
+    ;; TODO: Use a list as an accumulator instead, this is hacky and not how transients are supposed to work (they're not reference types)
    (let [generators! (transient [])]
      (collect-generator-children v-tree generators!)
      (persistent! generators!)))
@@ -225,7 +225,7 @@
 
 
 (defn reify-generator
-  ;; XXX: Docs
+  ;; TODO: Docs
   ([gen global-state]
    (assert (or (nil? global-state) (map? global-state)
                "global-state must be nil or a map"))
@@ -317,7 +317,7 @@
 
 (defn rektify-v-tree
   [new-v-tree cur-v-tree *gen-children]
-  ;; XXX: Do the rektification to fix failing test
+  ;; XXX: Do the rektification
   (throw (js/Error. "Rektification not implemented yet")))
 
 
@@ -346,14 +346,19 @@
                cur-v-tree (:v-tree @*cur-state)
                v-tree (if (= gen-v-tree cur-v-tree)
                         ;; If the new v-tree is the same just return the cur
-                        ;; v-tree and same child generators
-                        (do (reset! *v-tree-gen-children
-                                    (:child-generators @*cur-state))
-                            cur-v-tree)
+                        ;; v-tree and regenerate the child generators
+                        (let [child-gens (:child-generators @*cur-state)]
+                          (when (some? child-gens)
+                            (reset! *v-tree-gen-children
+                                    (mapv (fn [gen] (regenerate gen gen))
+                                          child-gens)))
+                          cur-v-tree)
+                        ;; If the v-trees are different rektify them
                         (rektify-v-tree gen-v-tree cur-v-tree
                                         *v-tree-gen-children))
                &o-tree (&o-tree v-tree)]
            (g/post-generate gen-desc gen-props @**cur-local-state* &o-tree)
+
 
            ;; Return the new-gen with the updated state from the cur-gen
            (merge-new-gen-state
