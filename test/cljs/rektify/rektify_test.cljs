@@ -529,8 +529,8 @@
             *parent-call-count (atom 0)
             parent-gen-desc {:generate
                              (fn [_ _ _]
+                               (swap! *parent-call-count inc)
                                (one-fish {}
-                                (swap! *parent-call-count inc)
                                  (vt/generator
                                    child-gen-desc {:changing-prop @*parent-call-count})))}
             reified-gen (rekt/reify-generator (vt/generator
@@ -547,7 +547,9 @@
             "Original parent object is returned after regeneration")
         (is (= (.getChildAt &o-tree 0)
                (.getChildAt (rekt/&o-tree regenerated-gen) 0))
-            "Original child object is returned after regeneration")))))
+            "Original child object is returned after regeneration")))
+
+    (testing "and lifecycle functions are called in order with correct args")))
 
 
 (deftest get-in-state

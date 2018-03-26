@@ -28,12 +28,6 @@
             [rektify.generator :as g]
             [rektify.object :as o]))
 
-;; XXX: Generator state NEEDS to be held in an atom. During rektification, if
-;; XXX: a generator doesn't need to be regenerated but its children do, the
-;; XXX: state updates that to the children if they need to be generated need to
-;; XXX: be propagated into the generator's v-tree. This can only happen if state
-;; XXX: is kept as a reference type.
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
@@ -84,17 +78,18 @@
   "Return the new values for the key-paths in the current subscriptions map"
   [cur-subscriptions]
   (loop [key-paths (keys cur-subscriptions)
-         new-subscriptions! (transient {})]
+         !new-subscriptions (transient {})]
     (if (seq key-paths)
       (let [key-path (first key-paths)]
         (recur (rest key-paths)
-               (assoc! new-subscriptions!
+               (assoc! !new-subscriptions
                        key-path (get-in *global-state* key-path))))
-      (persistent! new-subscriptions!))))
+      (persistent! !new-subscriptions))))
 
 
 (declare reify-generator)
 (declare destroy-v-tree)
+(declare regenerate)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
@@ -153,6 +148,14 @@
   gen)
 
 
+(defn merge-new-gen-state
+  "Merge the new state with the cur-gen's state and apply it to the new-gen"
+  [cur-gen new-gen new-state]
+  (let [*gen-state (gen-state-atom cur-gen)]
+    (swap! *gen-state merge new-state)
+    (vt/with-state new-gen {::gen-state *gen-state})))
+
+
 ;; XXX: write test
 (defn collect-generator-children
   "Return a list of all child generators in the v-tree"
@@ -206,12 +209,13 @@
         (vt/with-state
           (vt/object obj-desc obj-props
                      ;; Recursively reify each child and store in the return object
-                     (mapv (fn [v-child]
-                             (let [reified-v-tree (reify-v-tree
-                                                    v-child *child-gens)]
-                               (add-v-tree-to-obj reified-v-tree obj-desc &obj)
-                               reified-v-tree))
-                           v-children))
+                     (when (some? v-children)
+                       (mapv (fn [v-child]
+                               (let [reified-v-tree (reify-v-tree
+                                                      v-child *child-gens)]
+                                 (add-v-tree-to-obj reified-v-tree obj-desc &obj)
+                                 reified-v-tree))
+                             v-children)))
           ;; store a reference to the created object in the v-node's state
           {::&o-tree &obj}))
       ;; If this is a generator node, reify it, store it in *child-gens and return
@@ -295,7 +299,7 @@
 (defn regeneration-required?
   "Given a new generator and the current generator's new subscriptions,
   determine if the current generator needs to be regenerated."
-  [cur-gen cur-subscriptions new-gen new-subscriptions]
+  [cur-gen new-gen]
   (assert (reified-generator? cur-gen)
           "cur-gen is not a reified generator")
   (assert (vt/generator? new-gen)
@@ -303,13 +307,22 @@
   (assert (= (vt/type-desc cur-gen) (vt/type-desc new-gen))
           "Checking regeneration requires that both generators are the same type")
 
-  (or ;; Have the props or children changed?
+  (let [cur-subscriptions (:state-subscriptions @(gen-state-atom cur-gen))]
+    (or
+      ;; Have the props or children changed?
       (not= cur-gen new-gen)
       ;; Have the subscriptions changed?
-      (not= cur-subscriptions new-subscriptions)))
+      (not= cur-subscriptions (update-state-subscriptions cur-subscriptions)))))
+
+
+(defn rektify-v-tree
+  [new-v-tree cur-v-tree *gen-children]
+  ;; XXX: Do the rektification to fix failing test
+  (throw (js/Error. "Rektification not implemented yet")))
 
 
 (defn regenerate
+  ;; TODO: Docs
   ([cur-gen new-gen global-state]
     (binding [*global-state* global-state]
       (regenerate cur-gen new-gen)))
@@ -321,13 +334,35 @@
            (str "new-gen is not a valid generator: "
                 (g/invalid-generator-msg new-gen)))
 
-   (let [*cur-state (gen-state-atom cur-gen)
-         cur-subscriptions (:state-subscriptions @*cur-state)
-         new-subscriptions (update-state-subscriptions cur-subscriptions)]
-     (if (regeneration-required? cur-gen cur-subscriptions
-                                 new-gen new-subscriptions)
-       ;; XXX: Do the regeneration
-       (throw (js/Error. "regeneration not implemented"))
+   (let [*cur-state (gen-state-atom cur-gen)]
+     (if (regeneration-required? cur-gen new-gen)
+       (binding [**cur-local-state* (atom (:local-state @*cur-state))
+                 **global-state-subscriptions* (atom {})]
+         (let [*v-tree-gen-children (atom nil)
+               gen-desc (vt/type-desc new-gen)
+               gen-props (vt/props new-gen)
+               gen-v-tree (g/generate gen-desc gen-props
+                                      @**cur-local-state* (vt/children new-gen))
+               cur-v-tree (:v-tree @*cur-state)
+               v-tree (if (= gen-v-tree cur-v-tree)
+                        ;; If the new v-tree is the same just return the cur
+                        ;; v-tree and same child generators
+                        (do (reset! *v-tree-gen-children
+                                    (:child-generators @*cur-state))
+                            cur-v-tree)
+                        (rektify-v-tree gen-v-tree cur-v-tree
+                                        *v-tree-gen-children))
+               &o-tree (&o-tree v-tree)]
+           (g/post-generate gen-desc gen-props @**cur-local-state* &o-tree)
+
+           ;; Return the new-gen with the updated state from the cur-gen
+           (merge-new-gen-state
+             cur-gen new-gen
+             {:v-tree v-tree
+              :local-state @**cur-local-state*
+              :child-generators @*v-tree-gen-children
+              :state-subscriptions @**global-state-subscriptions*})))
+
        ;; Return the cur-gen if regeneration is not required
        cur-gen))))
 
