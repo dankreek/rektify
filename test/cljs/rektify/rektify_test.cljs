@@ -500,7 +500,7 @@
         (is (= &obj (rekt/&o-tree regenerated-gen))
             "Original object is returned after regeneration"))))
 
-  (testing "regeneration yields the same virtual tree"
+  (testing "regenerate yields the same virtual tree"
     (testing "with single generator"
       (let [*call-count (atom 0)
             gen-desc {:generate (fn [_ _ _]
@@ -546,9 +546,54 @@
             "Original parent object is returned after regeneration")
         (is (= (.getChildAt &o-tree 0)
                (.getChildAt (rekt/&o-tree regenerated-gen) 0))
-            "Original child object is returned after regeneration")))
+            "Original child object is returned after regeneration"))
 
-    (testing "and lifecycle functions are called in order with correct args")))
+      (testing "and lifecycle functions are called in order with correct args"
+        (let [*call-count (atom 0)
+              child-gen-desc {:init (fn [_]
+                                      (swap! *call-count inc)
+                                      (is (= 3 @*call-count)
+                                          "child :init called in order")
+                                      nil)
+                              :generate (fn [_ _ _]
+                                          (rekt/subscribe [:a])
+                                          (swap! *call-count inc)
+                                          (is (or (= 4 @*call-count)
+                                                  (= 8 @*call-count))
+                                              "child :generate called in order")
+                                          (red-fish {}))
+                              :post-generate (fn [_ _ _]
+                                               (swap! *call-count inc)
+                                               (is (or (= 5 @*call-count)
+                                                       (= 9 @*call-count))
+                                                   "child :post-generate called in order"))}
+              parent-gen-desc {:init (fn [_]
+                                      (swap! *call-count inc)
+                                      (is (= 1 @*call-count)
+                                          "parent :init called in order")
+                                      nil)
+                              :generate (fn [_ _ _]
+                                          (rekt/subscribe [:a])
+                                          (swap! *call-count inc)
+                                          (is (or (= 2 @*call-count)
+                                                  (= 7 @*call-count))
+                                              "parent :generate called in order")
+                                          (one-fish {}
+                                            (vt/generator child-gen-desc)))
+                              :post-generate (fn [_ _ _]
+                                               (swap! *call-count inc)
+                                               (is (or (= 6 @*call-count)
+                                                       (= 10 @*call-count))
+                                                   "parent :post-generate called in order"))}
+              generator (vt/generator parent-gen-desc)]
+          (-> generator
+            (rekt/reify-generator {:a 1})
+            (rekt/regenerate generator {:a 2}))))))
+
+  (testing "regenerate yields same o-tree with modified props"
+    (testing "with a single generator")
+    (testing "with a nested generator")
+    ))
 
 
 (deftest get-in-state

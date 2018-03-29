@@ -359,7 +359,6 @@
                &o-tree (&o-tree v-tree)]
            (g/post-generate gen-desc gen-props @**cur-local-state* &o-tree)
 
-
            ;; Return the new-gen with the updated state from the cur-gen
            (merge-new-gen-state
              cur-gen new-gen
