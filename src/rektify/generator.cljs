@@ -1,3 +1,4 @@
+;; TODO: Move the & at the beginning of the object reference vars
 (ns rektify.generator
   "
   # Generator helper functions
@@ -19,9 +20,8 @@
 
   * `:init` `[props]` _(optional)_: Called when a generator is about
     to generate its first v-tree. The props argument is the property map which
-    is defined on the v-node which contains the generator description. Init is
-    expected to return either `nil` or a map containing the generator's initial
-    local state.
+    is defined on the v-node which contains the generator description. Return
+    value is ignored.
 
   * `:generate` `[props state children]`: Called when a new v-tree needs to be
     generated. The props come from the containing v-node, the state is the

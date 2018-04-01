@@ -22,7 +22,7 @@ test.classes.Fish.prototype.getChildIndex = function(child) {
   if (childI >= 0) {
     return childI;
   } else {
-    throw Error('Child not found');
+    return null;
   }
 };
 

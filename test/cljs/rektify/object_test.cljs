@@ -59,6 +59,17 @@
       (is (= 0 (count (o/children classes/one-fish-desc one-fish)))))))
 
 
+(deftest child-index
+  (let [&one-fish (new classes/OneFish)
+        &red-fish (new classes/RedFish)]
+    (testing "`nil` is returned when child does not exist"
+      (is (nil? (o/child-index classes/one-fish-desc &one-fish &red-fish))))
+    (testing "correct index of child is returned"
+      (is (= &red-fish)
+          (o/add-child! classes/one-fish-desc &one-fish &red-fish))
+      (is (= 0 (o/child-index classes/one-fish-desc &one-fish &red-fish))))))
+
+
 (deftest destroy!
   (testing "destroy! calls destructor function"
     (let [one-fish (new classes/OneFish)]

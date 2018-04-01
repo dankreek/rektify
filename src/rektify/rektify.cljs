@@ -316,9 +316,20 @@
 
 
 (defn rektify-v-tree
-  [new-v-tree cur-v-tree *gen-children]
-  ;; XXX: Do the rektification
-  (throw (js/Error. "Rektification not implemented yet")))
+  ;; XXX: reverse the new-v-tree and cur-v-tree params
+  ([new-v-tree cur-v-tree *gen-children]
+    (rektify-v-tree new-v-tree cur-v-tree *gen-children nil nil nil))
+  ([new-v-tree cur-v-tree *gen-children &parent parent-o-desc]
+   (let [child-index (when &parent
+                       (o/get-child-index
+                         parent-o-desc &parent (&o-tree cur-v-tree)))]
+     (rektify-v-tree
+       new-v-tree cur-v-tree *gen-children &parent parent-o-desc child-index)))
+  ([new-v-tree cur-v-tree *gen-children &parent parent-o-desc child-index]
+
+    ;; XXX: Do the rektification
+
+   (throw (js/Error. "Rektification not implemented yet"))))
 
 
 (defn regenerate

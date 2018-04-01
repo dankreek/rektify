@@ -53,6 +53,10 @@
   (.destroy obj))
 
 
+(defn get-child-index [obj child]
+  (.getChildIndex obj child))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; custom getters and setters
 
@@ -76,6 +80,7 @@
    :destructor destroy
    :replace-child replace-child
    :remove-child remove-child
+   :child-index get-child-index
 
    ;; Not used by rektify yet
    ;:child-index child-index

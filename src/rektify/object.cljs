@@ -65,6 +65,9 @@
     is a reference to the child to be removed and should return a reference to
     the removed child.
 
+  * `:child-index` function that returns the index of a child, `nil` if the
+    child object is not a child of the object.
+
   * `:prop-map` the map of properties which Rektify will used to manipulate an
     object's JavaScript projects. It is described below.
 
@@ -214,6 +217,15 @@
     (assert (fn? remove-child-fn)
             ":remove-child must be a function defined in the object description")
     (remove-child-fn obj& child&)))
+
+
+(defn child-index
+  "Return the index of the child object"
+  [obj-desc &obj &child]
+  (let [child-index-fn (:child-index obj-desc)]
+    (assert (fn? child-index-fn)
+            ":child-index must be a function defined in the object description")
+    (child-index-fn &obj &child)))
 
 
 (defn destroy!
