@@ -62,6 +62,8 @@
 (deftest child-index
   (let [&one-fish (new classes/OneFish)
         &red-fish (new classes/RedFish)]
+    (testing "`nil` is returned if child is nil"
+      (is (nil? (o/child-index classes/one-fish-desc &one-fish nil))))
     (testing "`nil` is returned when child does not exist"
       (is (nil? (o/child-index classes/one-fish-desc &one-fish &red-fish))))
     (testing "correct index of child is returned"
@@ -93,7 +95,16 @@
       (is (thrown-with-msg?
             js/Error
             #"There is no definition for the property :invalid"
-            (o/prop classes/one-fish-desc one-fish :invalid))))))
+            (o/prop classes/one-fish-desc one-fish :invalid)))))
+
+  (let [red-fish (new classes/RedFish)]
+    (set! (.-x red-fish) 0)
+    (set! (.-y red-fish) 1)
+    (set! (.-z red-fish) 2)
+
+    (testing "A composite property with no prop name defined"
+      (is (= [0 1 2] (o/prop classes/red-fish-desc red-fish :something))
+          "composite property is returned"))))
 
 
 (deftest props

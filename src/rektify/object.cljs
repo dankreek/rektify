@@ -225,7 +225,8 @@
   (let [child-index-fn (:child-index obj-desc)]
     (assert (fn? child-index-fn)
             ":child-index must be a function defined in the object description")
-    (child-index-fn &obj &child)))
+    (when (some? &child)
+      (child-index-fn &obj &child))))
 
 
 (defn destroy!
@@ -247,9 +248,9 @@
         obj-prop (get-in obj-desc [:prop-map key :property])]
     (assert (fn? getter)
             (str "The getter for the property " key " must be a function."))
-    (assert (string? obj-prop)
-            (str "The property " key " must have the name of the "
-                 "object's property defined."))
+    (assert (or (string? obj-prop) (nil? obj-prop))
+            (str "The property " key " must be undefined or a string with the "
+                 "name of the object's property defined."))
     (getter obj& obj-prop)))
 
 

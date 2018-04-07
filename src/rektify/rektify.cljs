@@ -90,6 +90,7 @@
 (declare reify-generator)
 (declare destroy-v-tree)
 (declare regenerate)
+(declare rektify-v-tree)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Public
@@ -314,22 +315,64 @@
       ;; Have the subscriptions changed?
       (not= cur-subscriptions (update-state-subscriptions cur-subscriptions)))))
 
+(defn rektify-v-tree-children
+  [cur-v-children new-v-children *gen-children &parent parent-o-desc]
+  (if (= cur-v-children new-v-children)
+    (when cur-v-children
+      (loop [cur-children cur-v-children
+             new-children new-v-children
+             rektified-children nil
+             i 0]
+        (if (seq cur-children)
+          (recur (rest cur-children)
+                 (rest new-children)
+                 (conj rektified-children (rektify-v-tree
+                                            (first cur-children)
+                                            (first new-children)
+                                            *gen-children
+                                            &parent parent-o-desc
+                                            i))
+                 (inc i))
+          ;; Return the list of rektified children
+          (vec rektified-children))))
+    (throw (js/Error. "rektifying different children not implemented"))))
+
 
 (defn rektify-v-tree
-  ;; XXX: reverse the new-v-tree and cur-v-tree params
-  ([new-v-tree cur-v-tree *gen-children]
-    (rektify-v-tree new-v-tree cur-v-tree *gen-children nil nil nil))
-  ([new-v-tree cur-v-tree *gen-children &parent parent-o-desc]
+  ([cur-v-tree new-v-tree *gen-children]
+    (rektify-v-tree cur-v-tree new-v-tree *gen-children nil nil nil))
+  ([cur-v-tree new-v-tree *gen-children &parent parent-o-desc]
    (let [child-index (when &parent
-                       (o/get-child-index
+                       (o/child-index
                          parent-o-desc &parent (&o-tree cur-v-tree)))]
      (rektify-v-tree
-       new-v-tree cur-v-tree *gen-children &parent parent-o-desc child-index)))
-  ([new-v-tree cur-v-tree *gen-children &parent parent-o-desc child-index]
+       cur-v-tree new-v-tree *gen-children &parent parent-o-desc child-index)))
+  ([cur-v-tree new-v-tree *gen-children &parent parent-o-desc child-index]
+    ;; TODO: Account for v-trees being exactly the same
+    ;; If new and cur type descs are the same
+    (if (= (vt/type-desc new-v-tree) (vt/type-desc cur-v-tree))
+      (if (vt/object? cur-v-tree)
+        ;; If this is an object update the props and return the new v-node
+        (let [obj-desc (vt/type-desc cur-v-tree)
+              new-props (vt/props new-v-tree)
+              &obj (o/update-props!
+                     obj-desc (&o-tree cur-v-tree)
+                     new-props (vt/props cur-v-tree))]
+          (vt/with-state
+            (vt/object
+              obj-desc new-props
+              (rektify-v-tree-children
+                (vt/children cur-v-tree)
+                (vt/children new-v-tree)
+                *gen-children &obj obj-desc))
+            {::&o-tree &obj}))
+        ;; This is a generator regenerate and add to the *gen-children
+        (let [new-gen (regenerate cur-v-tree new-v-tree)]
+          (swap! *gen-children conj new-gen)
+          new-gen))
 
-    ;; XXX: Do the rektification
-
-   (throw (js/Error. "Rektification not implemented yet"))))
+      ;; These are different objects, handle later
+      (throw (js/Error. "Rektifying different object types not implemented yet")))))
 
 
 (defn regenerate
@@ -365,7 +408,7 @@
                                           child-gens)))
                           cur-v-tree)
                         ;; If the v-trees are different rektify them
-                        (rektify-v-tree gen-v-tree cur-v-tree
+                        (rektify-v-tree cur-v-tree gen-v-tree
                                         *v-tree-gen-children))
                &o-tree (&o-tree v-tree)]
            (g/post-generate gen-desc gen-props @**cur-local-state* &o-tree)
