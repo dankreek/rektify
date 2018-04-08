@@ -651,15 +651,33 @@
     (testing "with a single generator"
       (let [gen (vt/generator {:generate (fn [_ _ _]
                                            (let [val (rekt/subscribe [:val])]
-                                             (one-fish {:some-prop val})))})
+                                             (one-fish {:some-prop val}
+                                               (red-fish {:something [val val val]})
+                                               (blue-fish {:kind-of-blue val}))))})
+
             reified-gen (rekt/reify-generator gen {:val 1})
-            &init-o (rekt/&o-tree reified-gen)
+            &init-one (rekt/&o-tree reified-gen)
+            &init-red (.getChildAt &init-one 0)
+            &init-blue (.getChildAt &init-one 1)
+
             regenerated-gen (rekt/regenerate reified-gen gen {:val 2})
-            &regen-o (rekt/&o-tree regenerated-gen)]
-        (is (= &init-o &regen-o)
-            "Object is not replaced")
-        (is (= 2 (o/prop classes/one-fish-desc &regen-o :some-prop))
-            "Object's property updated")))
+            &regen-one (rekt/&o-tree regenerated-gen)
+            &regen-red (.getChildAt &regen-one 0)
+            &regen-blue (.getChildAt &regen-one 1)]
+
+        (is (= &init-one &regen-one)
+            "Parent object is not replaced")
+        (is (= &init-red &regen-red)
+            "First child is not replaced")
+        (is (= &init-blue &regen-blue)
+            "Second child is not replaced")
+
+        (is (= 2 (o/prop classes/one-fish-desc &regen-one :some-prop))
+            "Parent object's property updated")
+        (is (= [2 2 2] (o/prop classes/red-fish-desc &regen-red :something))
+            "First child's property updated")
+        (is (= 2 (o/prop classes/blue-fish-desc &regen-blue :kind-of-blue))
+            "Second child's property updated")))
 
     (testing "with a nested generator"
       (let [child-gen (vt/generator {:generate (fn [_ _ _]
@@ -668,121 +686,138 @@
             gen (vt/generator {:generate (fn [_ _ _]
                                            (let [one-prop (rekt/subscribe [:one])]
                                              (one-fish {:some-prop one-prop}
-                                               child-gen)))})
+                                               child-gen
+                                               (blue-fish {:kind-of-blue one-prop})
+                                               (one-fish {:some-prop one-prop}))))})
             reified-gen (rekt/reify-generator gen {:one 0
                                                    :red [1 2 3]})
-            &init-o (rekt/&o-tree reified-gen)
+            &init-one (rekt/&o-tree reified-gen)
+            &init-blue (.getChildAt &init-one 1)
+            &init-child-on (.getChildAt &init-one 2)
             regenerated-gen (rekt/regenerate reified-gen gen {:one 1
                                                               :red [4 5 6]})
-            _ (println "done regenerating")
-            &regen-o (rekt/&o-tree regenerated-gen)]
-        (is (= &init-o &regen-o)
+            &regen-o (rekt/&o-tree regenerated-gen)
+            &regen-blue (.getChildAt &regen-o 1)
+            &regen-child-one (.getChildAt &regen-o 2)]
+
+        (is (= &init-one &regen-o)
             "Parent object is not replaced")
-        (is (= (.getChildAt &init-o 0) (.getChildAt &regen-o 0))
-            "Child object is not replaced")
+        (is (= (.getChildAt &init-one 0) (.getChildAt &regen-o 0))
+            "Generator child object is not replaced")
+        (is (= &init-blue &regen-blue)
+            "Second child is not replaced")
+        (is (= &init-child-on &regen-child-one)
+            "Third child is not replaced")
+
         (is (= 1 (o/prop classes/one-fish-desc &regen-o :some-prop))
             "Parent object's properties updated")
-        (is (= [4 5 6] (o/prop classes/red-fish-desc (.getChildAt &regen-o 0) :something))
-            "Child object's properties updated")))
+        (is (= [4 5 6] (o/prop classes/red-fish-desc
+                               (.getChildAt &regen-o 0) :something))
+            "Generator child object's properties updated")
+        (is (= 1 (o/prop classes/blue-fish-desc &regen-blue :kind-of-blue))
+            "Second child's properties updated")
+        (is (= 1 (o/prop classes/one-fish-desc &regen-child-one :some-prop)))))
 
-    #_(testing "and lifecycle functions are called in the correct order with correct args"
+
+    (testing "and lifecycle functions are called in the correct order with correct args"
       (let [*call-count (atom 0)
-              child-props {:child :props}
-              *cur-child-state (atom nil)
-              child-gen-desc {:init (fn [props]
-                                      (swap! *call-count inc)
-                                      (is (= child-props props)
-                                          "props passed to child :init")
-                                      (is (= 3 @*call-count)
-                                          "child :init called in order")
-                                      ;; Set initial state using call count
-                                      (rekt/reset-local-state
-                                        (reset! *cur-child-state
-                                                {:child-state @*call-count})))
+            child-props {:child :props}
+            *cur-child-state (atom nil)
+            child-gen-desc {:init (fn [props]
+                                    (swap! *call-count inc)
+                                    (is (= child-props props)
+                                        "props passed to child :init")
+                                    (is (= 3 @*call-count)
+                                        "child :init called in order")
+                                    ;; Set initial state using call count
+                                    (rekt/reset-local-state
+                                      (reset! *cur-child-state
+                                              {:child-state @*call-count})))
 
-                              :generate (fn [props state children]
-                                          (let [val (rekt/subscribe [:a])]
-                                            (swap! *call-count inc)
-                                            (is (= child-props props))
-                                            (is (nil? children)
-                                                "child :generate passed correct children")
+                            :generate (fn [props state children]
+                                        (let [val (rekt/subscribe [:a])]
+                                          (swap! *call-count inc)
+                                          (is (= child-props props))
+                                          (is (nil? children)
+                                              "child :generate passed correct children")
 
-                                            (is (= @*cur-child-state state)
-                                                "child :generate is passed correct local state")
-                                            ;; Update local state for next lifecycle function
-                                            (rekt/reset-local-state
-                                              (reset! *cur-child-state {:child-state @*call-count}))
+                                          (is (= @*cur-child-state state)
+                                              "child :generate is passed correct local state")
+                                          ;; Update local state for next lifecycle function
+                                          (rekt/reset-local-state
+                                            (reset! *cur-child-state {:child-state @*call-count}))
 
-                                            (is (or (= 4 @*call-count)
-                                                    (= 8 @*call-count))
-                                                "child :generate called in order")
-                                            (red-fish {:something val})))
+                                          (is (or (= 4 @*call-count)
+                                                  (= 8 @*call-count))
+                                              "child :generate called in order")
+                                          (red-fish {:something [val val val]})))
 
-                              :post-generate (fn [props state &o-tree]
-                                               (swap! *call-count inc)
-                                               (is (= child-props props))
-                                               (is (= @*cur-child-state state)
-                                                   "child :post-generate is passed correct local state")
-                                               (rekt/reset-local-state
-                                                 (reset! *cur-child-state {:child-state @*call-count}))
-
-                                               (is (instance? classes/RedFish &o-tree)
-                                                   "child :post-generate is passed correct &o-tree")
-
-                                               (is (or (= 5 @*call-count)
-                                                       (= 9 @*call-count))
-                                                   "child :post-generate called in order"))}
-              parent-props {:parent :props}
-              *cur-parent-state (atom nil)
-              parent-gen-desc {:init (fn [props]
-                                       (swap! *call-count inc)
-                                       (is (= 1 @*call-count)
-                                           "parent :init called in order")
-                                       (is (= parent-props props)
-                                           "parent :init passed correct props")
-                                       (rekt/reset-local-state
-                                         (reset! *cur-parent-state
-                                                 {:parent @*call-count})))
-                               :generate (fn [props state children]
-                                           (let [val (rekt/subscribe [:a])]
+                            :post-generate (fn [props state &o-tree]
                                              (swap! *call-count inc)
-                                             (is (= parent-props props)
-                                                 "parent :generate passed correct props")
-                                             (is (= @*cur-parent-state state)
-                                                 "parent :generate passed correct state")
-                                             (is (nil? children)
-                                                 "parent :generate passed correct children")
-
+                                             (is (= child-props props))
+                                             (is (= @*cur-child-state state)
+                                                 "child :post-generate is passed correct local state")
                                              (rekt/reset-local-state
-                                               (reset! *cur-parent-state
-                                                       {:parent @*call-count}))
+                                               (reset! *cur-child-state {:child-state @*call-count}))
 
-                                             (is (or (= 2 @*call-count)
-                                                     (= 7 @*call-count))
-                                                 "parent :generate called in order")
+                                             (is (instance? classes/RedFish &o-tree)
+                                                 "child :post-generate is passed correct &o-tree")
 
-                                             (one-fish {:some-prop val}
-                                               (vt/generator child-gen-desc child-props))))
-                               :post-generate (fn [props state &o-tree]
-                                                (swap! *call-count inc)
-                                                (is (= parent-props props)
-                                                    "parent :post-generate passed correct props")
-                                                (is (= state @*cur-parent-state)
-                                                    "parent :post-generate passed correct state")
-                                                (is (instance? classes/OneFish &o-tree)
-                                                    "parent :post-generate passed correct &o-tree")
+                                             (is (or (= 5 @*call-count)
+                                                     (= 9 @*call-count))
+                                                 "child :post-generate called in order"))}
+            parent-props {:parent :props}
+            *cur-parent-state (atom nil)
+            parent-gen-desc {:init (fn [props]
+                                     (swap! *call-count inc)
+                                     (is (= 1 @*call-count)
+                                         "parent :init called in order")
+                                     (is (= parent-props props)
+                                         "parent :init passed correct props")
+                                     (rekt/reset-local-state
+                                       (reset! *cur-parent-state
+                                               {:parent @*call-count})))
+                             :generate (fn [props state children]
+                                         (let [val (rekt/subscribe [:a])]
+                                           (swap! *call-count inc)
+                                           (is (= parent-props props)
+                                               "parent :generate passed correct props")
+                                           (is (= @*cur-parent-state state)
+                                               "parent :generate passed correct state")
+                                           (is (nil? children)
+                                               "parent :generate passed correct children")
 
-                                                (rekt/reset-local-state
-                                                  (reset! *cur-parent-state
-                                                          {:parent @*call-count}))
+                                           (rekt/reset-local-state
+                                             (reset! *cur-parent-state
+                                                     {:parent @*call-count}))
 
-                                                (is (or (= 6 @*call-count)
-                                                        (= 10 @*call-count))
-                                                    "parent :post-generate called in order"))}
-              generator (vt/generator parent-gen-desc parent-props)]
-          (-> generator
-            (rekt/reify-generator {:a 1})
-            (rekt/regenerate generator {:a 2}))))))
+                                           (is (or (= 2 @*call-count)
+                                                   (= 7 @*call-count))
+                                               "parent :generate called in order")
+
+                                           (one-fish {:some-prop val}
+                                             (vt/generator child-gen-desc child-props))))
+
+                             :post-generate (fn [props state &o-tree]
+                                              (swap! *call-count inc)
+                                              (is (= parent-props props)
+                                                  "parent :post-generate passed correct props")
+                                              (is (= state @*cur-parent-state)
+                                                  "parent :post-generate passed correct state")
+                                              (is (instance? classes/OneFish &o-tree)
+                                                  "parent :post-generate passed correct &o-tree")
+
+                                              (rekt/reset-local-state
+                                                (reset! *cur-parent-state
+                                                        {:parent @*call-count}))
+
+                                              (is (or (= 6 @*call-count)
+                                                      (= 10 @*call-count))
+                                                  "parent :post-generate called in order"))}
+            generator (vt/generator parent-gen-desc parent-props)]
+        (-> generator
+          (rekt/reify-generator {:a 1})
+          (rekt/regenerate generator {:a 2}))))))
 
 
 (deftest get-in-state

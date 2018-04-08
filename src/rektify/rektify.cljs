@@ -317,25 +317,23 @@
 
 (defn rektify-v-tree-children
   [cur-v-children new-v-children *gen-children &parent parent-o-desc]
-  (if (= cur-v-children new-v-children)
-    (when cur-v-children
-      (loop [cur-children cur-v-children
-             new-children new-v-children
-             rektified-children nil
-             i 0]
-        (if (seq cur-children)
-          (recur (rest cur-children)
-                 (rest new-children)
-                 (conj rektified-children (rektify-v-tree
-                                            (first cur-children)
-                                            (first new-children)
-                                            *gen-children
-                                            &parent parent-o-desc
-                                            i))
-                 (inc i))
-          ;; Return the list of rektified children
-          (vec rektified-children))))
-    (throw (js/Error. "rektifying different children not implemented"))))
+  (when cur-v-children
+    (loop [cur-children cur-v-children
+           new-children new-v-children
+           rektified-children nil
+           i 0]
+      (if (seq cur-children)
+        (recur (rest cur-children)
+               (rest new-children)
+               (conj rektified-children (rektify-v-tree
+                                          (first cur-children)
+                                          (first new-children)
+                                          *gen-children
+                                          &parent parent-o-desc
+                                          i))
+               (inc i))
+        ;; Return the list of rektified children
+        (vec rektified-children)))))
 
 
 (defn rektify-v-tree
