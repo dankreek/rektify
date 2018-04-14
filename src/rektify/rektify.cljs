@@ -317,23 +317,45 @@
 
 (defn rektify-v-tree-children
   [cur-v-children new-v-children *gen-children &parent parent-o-desc]
-  (when cur-v-children
-    (loop [cur-children cur-v-children
-           new-children new-v-children
-           rektified-children nil
-           i 0]
-      (if (seq cur-children)
-        (recur (rest cur-children)
-               (rest new-children)
-               (conj rektified-children (rektify-v-tree
-                                          (first cur-children)
-                                          (first new-children)
-                                          *gen-children
-                                          &parent parent-o-desc
-                                          i))
-               (inc i))
-        ;; Return the list of rektified children
-        (vec rektified-children)))))
+  ;; Remove nil children from new-v-children, they will be removed algorithmically
+  (let [new-v-children (when new-v-children (remove nil? new-v-children))]
+    (when (< (count cur-v-children) (count new-v-children))
+      (throw (js/Error. "Adding v-tree children not implemented")))
+    (when (> (count cur-v-children) (count new-v-children))
+      (throw (js/Error. "Removing v-tree children not implemented")))
+    ;; XXX: Call a truncate function that removes children from parent
+    (when (or cur-v-children new-v-children)
+      (loop [cur-children cur-v-children
+             new-children new-v-children
+             rektified-children nil
+             i 0]
+        (if (and (seq cur-children) (seq new-children))
+          (recur (rest cur-children)
+                 (rest new-children)
+                 (conj rektified-children (rektify-v-tree
+                                            (first cur-children)
+                                            (first new-children)
+                                            *gen-children
+                                            &parent parent-o-desc
+                                            i))
+                 (inc i))
+          ;; Return the list of rektified children
+          (vec rektified-children))))))
+
+
+(defn replace-child-with-v-tree!
+  "Replace an object's child described by `o-parent-desc` with the object in
+  the reified v-tree. If no `o-parent-desc` is provided then do nothing. Returns
+  the v-tree."
+  [o-parent-desc &parent &cur-o v-tree]
+  (when o-parent-desc
+    (o/replace-child! o-parent-desc &parent &cur-o (&o-tree v-tree))
+    (when (vt/generator? v-tree)
+      (swap! (gen-state-atom v-tree)
+             assoc
+             :&o-parent &parent
+             :o-parent-desc o-parent-desc)))
+  v-tree)
 
 
 (defn rektify-v-tree
@@ -369,8 +391,12 @@
           (swap! *gen-children conj new-gen)
           new-gen))
 
-      ;; These are different objects, handle later
-      (throw (js/Error. "Rektifying different object types not implemented yet")))))
+      ;; These are different types, destroy the current and replace wth new
+      (let [&cur-o (&o-tree cur-v-tree)
+            reified-new (reify-v-tree new-v-tree *gen-children)]
+        (replace-child-with-v-tree! parent-o-desc &parent &cur-o reified-new)
+        (destroy-v-tree cur-v-tree)
+        reified-new))))
 
 
 (defn regenerate

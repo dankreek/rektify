@@ -817,7 +817,295 @@
             generator (vt/generator parent-gen-desc parent-props)]
         (-> generator
           (rekt/reify-generator {:a 1})
-          (rekt/regenerate generator {:a 2}))))))
+          (rekt/regenerate generator {:a 2})))))
+
+  (testing "replace v-tree nodes: "
+    (let [*child-gens (atom nil)]
+      (testing "single node is replaced"
+        (let [reified-node (rekt/reify-v-tree
+                             (vt/object classes/one-fish-desc)
+                             *child-gens)
+              &init-o (rekt/&o-tree reified-node)
+              rektified-node (rekt/rektify-v-tree
+                               reified-node
+                               (vt/object classes/red-fish-desc
+                                          {:something [1 2 3]})
+                               *child-gens)
+              &rekt-o (rekt/&o-tree rektified-node)]
+          (is (= true (.isDestroyed &init-o))
+              "Initial object was destroyed")
+          (is (instance? classes/RedFish &rekt-o)
+              "Rektified object is correct type")
+          (is (= [1 2 3] (o/prop classes/red-fish-desc &rekt-o :something))
+              "Rektified object has properties set")))
+
+      (testing "node's single child is replaced"
+        (let [reified-node (rekt/reify-v-tree
+                             (one-fish {}
+                               (blue-fish {}))
+                             *child-gens)
+              &init-one (rekt/&o-tree reified-node)
+              &init-child (.getChildAt &init-one 0)
+              rektified-node (rekt/rektify-v-tree
+                               reified-node
+                               (one-fish {}
+                                 (red-fish {:something [1 2 3]}))
+                               *child-gens)
+              &rekt-one (rekt/&o-tree rektified-node)
+              &rekt-child (.getChildAt &rekt-one 0)]
+          (is (= &init-one &rekt-one) "Parent wasn't replaced")
+          (is (instance? classes/RedFish &rekt-child) "Child was created")
+          (is (= true (.isDestroyed &init-child)) "Child was destroyed")))
+
+      (testing "node's first child is replace"
+        (let [reified-node (rekt/reify-v-tree
+                             (one-fish {}
+                               (red-fish {})
+                               (blue-fish {})
+                               (one-fish {}))
+                             *child-gens)
+              &init-one (rekt/&o-tree reified-node)
+              &init-red (.getChildAt &init-one 0)
+              &init-blue (.getChildAt &init-one 1)
+              &init-child-one (.getChildAt &init-one 2)
+              rektified-node (rekt/rektify-v-tree
+                               reified-node
+                               (one-fish {}
+                                 (one-fish {:some-prop "music"})
+                                 (blue-fish {})
+                                 (one-fish {}))
+                               *child-gens)
+              &rekt-one (rekt/&o-tree rektified-node)
+              &rekt-new-one (.getChildAt &rekt-one 0)
+              &rekt-blue (.getChildAt &rekt-one 1)
+              &rekt-child-one (.getChildAt &rekt-one 2)]
+          (is (= &init-one &rekt-one) "Parent was not replaced")
+          (is (= true (.isDestroyed &init-red))
+              "Previous first child was destroyed")
+          (is (instance? classes/OneFish &rekt-new-one)
+              "First child was replaced")
+          (is (= "music"
+                 (o/prop classes/one-fish-desc &rekt-new-one :some-prop))
+              "First child's props were set")
+          (is (= &init-blue &rekt-blue)
+              "Second child was not replaced")
+          (is (= &init-child-one &rekt-child-one)
+              "Third child was not replaced")))
+
+      (testing "node's middle child is replaced"
+        (let [reified-node (rekt/reify-v-tree
+                             (one-fish {}
+                               (red-fish {})
+                               (blue-fish {})
+                               (one-fish {}))
+                             *child-gens)
+              &init-one (rekt/&o-tree reified-node)
+              &init-red (.getChildAt &init-one 0)
+              &init-blue (.getChildAt &init-one 1)
+              &init-child-one (.getChildAt &init-one 2)
+              rektified-node (rekt/rektify-v-tree
+                               reified-node
+                               (one-fish {}
+                                 (red-fish {})
+                                 (one-fish {:some-prop "music"})
+                                 (one-fish {}))
+                               *child-gens)
+              &rekt-one (rekt/&o-tree rektified-node)
+              &rekt-red (.getChildAt &rekt-one 0)
+              &rekt-new-child (.getChildAt &rekt-one 1)
+              &rekt-child-one (.getChildAt &rekt-one 2)]
+          (is (= &init-one &rekt-one) "Parent was not replaced")
+          (is (= &init-red &rekt-red) "First child was not replaced")
+          (is (= true (.isDestroyed &init-blue))
+              "Previous second child was destroyed")
+          (is (instance? classes/OneFish &rekt-new-child)
+              "Second child was replaced")
+          (is (= "music"
+                 (o/prop classes/one-fish-desc &rekt-new-child :some-prop))
+              "Second child's props were set")
+          (is (= &init-child-one &rekt-child-one)
+              "Third child was not replaced")))
+
+      (testing "node's last child is replaced"
+        (let [reified-node (rekt/reify-v-tree
+                             (one-fish {}
+                               (red-fish {})
+                               (blue-fish {})
+                               (one-fish {}))
+                             *child-gens)
+              &init-one (rekt/&o-tree reified-node)
+              &init-red (.getChildAt &init-one 0)
+              &init-blue (.getChildAt &init-one 1)
+              &init-child-one (.getChildAt &init-one 2)
+              rektified-node (rekt/rektify-v-tree
+                               reified-node
+                               (one-fish {}
+                                 (red-fish {})
+                                 (blue-fish {})
+                                 (red-fish {:something [1 2 3]}))
+                               *child-gens)
+              &rekt-one (rekt/&o-tree rektified-node)
+              &rekt-red (.getChildAt &rekt-one 0)
+              &rekt-blue (.getChildAt &rekt-one 1)
+              &rekt-new-red (.getChildAt &rekt-one 2)]
+          (is (= &init-one &rekt-one) "Parent was not replaced")
+          (is (= &init-red &rekt-red) "First child was not replaced")
+          (is (= &init-blue &rekt-blue) "Second child was not replaced")
+          (is (= true (.isDestroyed &init-child-one))
+              "Previous thirst child was destroyed")
+          (is (instance? classes/RedFish &rekt-new-red)
+              "Third child was replaced")
+          (is (= [1 2 3]
+                 (o/prop classes/red-fish-desc &rekt-new-red :something))
+              "Third child's props were set"))))
+
+    (testing "replace child generator"
+      (let [*init-child-gens (atom nil)
+            *next-child-gens (atom nil)
+            *init-destroyed (atom false)
+            init-gen-desc {:generate (fn [_ _ _]
+                                       (red-fish {}))
+                           :pre-destroy (fn [_ _ _]
+                                          (reset! *init-destroyed true))}
+            next-gen-desc {:generate (fn [_ _ _]
+                                       (blue-fish {:kind-of-blue 32}))}
+            init-v-tree (rekt/reify-v-tree
+                          (one-fish {}
+                            (vt/generator init-gen-desc))
+                          *init-child-gens)
+            &init-parent (rekt/&o-tree init-v-tree)
+            &init-child (rekt/&o-tree (first @*init-child-gens))
+            rekt-v-tree (rekt/rektify-v-tree
+                          init-v-tree
+                          (one-fish {}
+                            (vt/generator next-gen-desc))
+                          *next-child-gens)
+            rekt-gen-state @(rekt/gen-state-atom (first @*next-child-gens))
+            &rekt-parent (rekt/&o-tree rekt-v-tree)
+            &rekt-child (rekt/&o-tree (first @*next-child-gens))]
+        (is (= true @*init-destroyed)
+            "Old generator is destroyed")
+        (is (= true (.isDestroyed &init-child))
+            "Old generator's child is destroyed")
+        (is (= &init-parent &rekt-parent)
+            "Parent is not replaced")
+        (is (instance? classes/BlueFish &rekt-child)
+            "Child is replaced")
+        (is (= 32 (o/prop classes/blue-fish-desc &rekt-child :kind-of-blue))
+            "Child's props are set")
+        (is (= classes/one-fish-desc (:o-parent-desc rekt-gen-state))
+            "Replaced generator maintains :o-parent-desc")
+        (is (= &rekt-parent (:&o-parent rekt-gen-state))
+            "Replaced generator maintains :&o-parent"))
+
+      (testing "and lifecycle functions are called in order with correct params"
+        (let [*call-order (atom 0)
+              init-child-props {:a 1}
+              init-child-state {:b 2}
+              init-child-desc {:generate
+                               (fn [_ _ _]
+                                 (rekt/reset-local-state init-child-state)
+                                 (red-fish {}))
+
+                               :pre-destroy
+                               (fn [props state &o-tree]
+                                 (is (= 4 (swap! *call-order inc))
+                                     "initial child gen :pre-destroy called in order")
+                                 (is (= init-child-props props)
+                                     "initial child gen :pre-destroy passed correct props")
+                                 (is (= init-child-state state)
+                                     "initial child gen :pre-destroy passed correct local state")
+                                 (is (instance? classes/RedFish &o-tree)
+                                     "initial child gen :pre-destroy passed correct &o-tree")
+                                 (is (= false (.isDestroyed &o-tree))
+                                     "initial child gen's &o-tree not yet destroyed"))}
+              next-child-props {:b 12}
+              next-child-state {:tt 1}
+              next-child-desc {:init
+                               (fn [props]
+                                 (is (= 1 (swap! *call-order inc))
+                                     "next child gen :init called in order")
+                                 (is (= next-child-props props)
+                                     "next child gen :init passes correct props")
+                                 (rekt/reset-local-state next-child-state))
+
+                               :generate
+                               (fn [props state children]
+                                 (is (= 2 (swap! *call-order inc))
+                                     "next child gen :generate called in order")
+                                 (is (= next-child-props props)
+                                     "next child gen :generate passed correct props")
+                                 (is (= next-child-state state)
+                                     "next child gen :generate passed correct local state")
+                                 (is (nil? children)
+                                     "next child gen :generate passed correct children")
+                                 (blue-fish {}))
+
+                               :post-generate
+                               (fn [props state &o-tree]
+                                 (is (= 3 (swap! *call-order inc))
+                                     "next child gen :post-generate called in order")
+                                 (is (= next-child-props props)
+                                     "next child gen :post-generate passed correct props")
+                                 (is (= next-child-state state)
+                                     "next child gen :post-generate passed correct local state")
+                                 (is (instance? classes/BlueFish &o-tree)
+                                     "next child gen :post-generate passed correct &o-tree"))}
+              init-v-tree (rekt/reify-v-tree
+                            (one-fish {}
+                              (vt/generator init-child-desc init-child-props))
+                            (atom nil))]
+          (rekt/rektify-v-tree
+            init-v-tree
+            (one-fish {}
+              (vt/generator next-child-desc next-child-props))
+            (atom nil)))))
+
+
+    #_(testing "remove children"
+        (testing "from o-tree of single generator"
+          (testing "with a single child"
+            (let [*call-count (atom 0)
+                  gen-desc {:generate (fn [_ _ _]
+                                        (let [count (swap! *call-count inc)]
+                                          (one-fish {}
+                                            (when (= 1 count)
+                                              (blue-fish {})))))}
+                  reified-gen (rekt/reify-generator
+                                (vt/generator gen-desc {:count @*call-count}))
+                  &init-one-fish (rekt/&o-tree reified-gen)
+                  &init-red-fish (.getChildAt &init-one-fish 0)
+                  regenerated-gen (rekt/regenerate
+                                    reified-gen
+                                    (vt/generator gen-desc {:count @*call-count}))
+                  &regen-one-fish (rekt/&o-tree regenerated-gen)]
+              (is (= &init-one-fish &regen-one-fish)
+                  "Parent object is the same")
+              (is (nil? (.getChildAt &regen-one-fish 0))
+                  "Child object was removed from parent")
+              (is (= true (.isDestroyed &init-red-fish))
+                  "Child object was destroyed")))
+
+          (testing "first of multiple children")
+          (testing "middle child of multiple children")
+          (testing "last child of multiple children"))
+
+        (testing "from o-tree of nested generator"
+          (testing "when generator is only child")
+
+          (testing "when generator is first of multiple children")
+          (testing "when generator is middle child of multiple children")
+          (testing "when generator is last child of multiple children"))
+
+        (testing "lifecycle functions are called in order with correct props"
+          (testing "on a single generator")
+          (testing "on a nested generator")))
+
+
+    (testing "remove o-tree"
+      (testing "of single generator")
+      (testing "of nested generator")
+      (testing "of parent and child generators"))))
 
 
 (deftest get-in-state
