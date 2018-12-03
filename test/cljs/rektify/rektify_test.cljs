@@ -29,6 +29,7 @@
   [props & children]
   (vt/object classes/blue-fish-desc props children))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Tests
 
@@ -45,7 +46,6 @@
         next-state {:a "A", :b "C"}]
     (rekt/merge-gen-state gen next-state)
     (is (= next-state @(rekt/gen-state-atom gen)))))
-
 
 
 (deftest reify-generator
@@ -1062,7 +1062,7 @@
             (atom nil)))))
 
 
-    #_(testing "remove children"
+    (testing "remove children"
         (testing "from o-tree of single generator"
           (testing "with a single child"
             (let [*call-count (atom 0)
@@ -1074,7 +1074,7 @@
                   reified-gen (rekt/reify-generator
                                 (vt/generator gen-desc {:count @*call-count}))
                   &init-one-fish (rekt/&o-tree reified-gen)
-                  &init-red-fish (.getChildAt &init-one-fish 0)
+                  &init-blue-fish (.getChildAt &init-one-fish 0)
                   regenerated-gen (rekt/regenerate
                                     reified-gen
                                     (vt/generator gen-desc {:count @*call-count}))
@@ -1083,10 +1083,33 @@
                   "Parent object is the same")
               (is (nil? (.getChildAt &regen-one-fish 0))
                   "Child object was removed from parent")
-              (is (= true (.isDestroyed &init-red-fish))
+              (is (= true (.isDestroyed &init-blue-fish))
                   "Child object was destroyed")))
 
-          (testing "first of multiple children")
+          (testing "first of multiple children"
+            (let [*call-count (atom 0)
+                  gen-desc {:generate (fn [_ _ _]
+                                        (let [count (swap! *call-count inc)]
+                                          (one-fish {}
+                                            [(when (= 1 count) (blue-fish {}))
+                                             (red-fish {})
+                                             (two-fish {})])))}
+                  reified-gen (rekt/reify-generator
+                                (vt/generator gen-desc {:count @*call-count}))
+                  &init-one-fish (rekt/&o-tree reified-gen)
+                  ;; XXX: Won't be the same instance, check matching properties instead!!!
+                  &init-blue-fish (.getChildAt &init-one-fish 0)
+                  &init-red-fish (.getChildAt &init-one-fish 1)
+                  &init-two-fish (.getChildAt &init-one-fish 2)
+                  regenerated-gen (rekt/regenerate
+                                    reified-gen
+                                    (vt/generator gen-desc {:count @*call-count}))
+                  &regen-one-fish (rekt/&o-tree regenerated-gen)]
+              (is (= &init-one-fish &regen-one-fish)
+                  "Parent object is the same")
+              (is (= true (.isDestroyed &init-blue-fish))
+                  "first child was destroyed")))
+
           (testing "middle child of multiple children")
           (testing "last child of multiple children"))
 
