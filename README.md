@@ -18,10 +18,32 @@ Using Figwheel in conjunction with the many ReactJS wrappers available has prove
 
 ## Usage
 
-No usage docs yet. Coming soon! 
+No usage docs yet. Coming soon!
+
+## Running tests
+
+```
+$ lein tests
+```
+
+## Starting a ClojureScript REPL
+
+Start up the Clojure REPL
+
+```
+$ lein repl
+```
+
+Start the ClojureScript REPL
+
+```
+=> (start-repl)
+```
+
+Your default browser should start up and connect to the REPL.
 
 ## License
 
-Copyright © 2017 Justin May
+Copyright © 2018 Justin May
 
 Distributed under the Eclipse Public License either version 1.0 or (at your option) any later version.
