@@ -315,15 +315,36 @@
       ;; Have the subscriptions changed?
       (not= cur-subscriptions (update-state-subscriptions cur-subscriptions)))))
 
+
+(defn truncate-children
+  [v-children new-size &parent parent-o-desc]
+  ;; need parent info here to remove children before destroying
+  (loop [del-children (take-last (- (count v-children) new-size) v-children)]
+    (when-let [child (first del-children)]
+      (o/remove-child! parent-o-desc &parent (&o-tree child))
+      (destroy-v-tree child)
+      (recur (rest del-children))))
+  (take new-size v-children))
+
+
+(defn normalize-cur-v-children
+  [cur-v-children new-v-children &parent parent-o-desc]
+  (js/console.log "cur-v-children" cur-v-children "new-v-children" new-v-children)
+  (cond
+    (< (count cur-v-children) (count new-v-children))
+    (throw (js/Error. "Adding v-tree children not implemented"))
+
+    (> (count cur-v-children) (count new-v-children))
+    (truncate-children cur-v-children (count new-v-children) &parent parent-o-desc)
+
+    :default
+    cur-v-children))
+
+
 (defn rektify-v-tree-children
   [cur-v-children new-v-children *gen-children &parent parent-o-desc]
-  ;; Remove nil children from new-v-children, they will be removed algorithmically
-  (let [new-v-children (when new-v-children (remove nil? new-v-children))]
-    (when (< (count cur-v-children) (count new-v-children))
-      (throw (js/Error. "Adding v-tree children not implemented")))
-    (when (> (count cur-v-children) (count new-v-children))
-      (throw (js/Error. "Removing v-tree children not implemented")))
-    ;; XXX: Call a truncate function that removes children from parent
+  (let [new-v-children (when new-v-children (remove nil? new-v-children))
+        cur-v-children (normalize-cur-v-children cur-v-children new-v-children &parent parent-o-desc)]
     (when (or cur-v-children new-v-children)
       (loop [cur-children cur-v-children
              new-children new-v-children

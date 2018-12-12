@@ -1087,31 +1087,85 @@
                   "Child object was destroyed")))
 
           (testing "first of multiple children"
-            (let [*call-count (atom 0)
-                  gen-desc {:generate (fn [_ _ _]
-                                        (let [count (swap! *call-count inc)]
-                                          (one-fish {}
-                                            [(when (= 1 count) (blue-fish {}))
-                                             (red-fish {})
-                                             (two-fish {})])))}
+            (let [gen-desc {:generate (fn [{count :count} _ _]
+                                        (one-fish {}
+                                          (when (= 0 count) (blue-fish {}))
+                                          (red-fish {})
+                                          (one-fish {:some-prop 42})))}
                   reified-gen (rekt/reify-generator
-                                (vt/generator gen-desc {:count @*call-count}))
+                                (vt/generator gen-desc {:count 0}))
                   &init-one-fish (rekt/&o-tree reified-gen)
-                  ;; XXX: Won't be the same instance, check matching properties instead!!!
                   &init-blue-fish (.getChildAt &init-one-fish 0)
-                  &init-red-fish (.getChildAt &init-one-fish 1)
-                  &init-two-fish (.getChildAt &init-one-fish 2)
                   regenerated-gen (rekt/regenerate
                                     reified-gen
-                                    (vt/generator gen-desc {:count @*call-count}))
+                                    (vt/generator gen-desc {:count 1}))
                   &regen-one-fish (rekt/&o-tree regenerated-gen)]
               (is (= &init-one-fish &regen-one-fish)
                   "Parent object is the same")
+              (is (= 2 (count (.getChildren &init-one-fish)))
+                  "Parent now has two children")
               (is (= true (.isDestroyed &init-blue-fish))
-                  "first child was destroyed")))
+                  "prev first child was destroyed")
+              (is (instance? classes/RedFish (.getChildAt &init-one-fish 0))
+                  "new first child is a RedFish")
+              (is (instance? classes/OneFish (.getChildAt &init-one-fish 1))
+                  "new second child is a OneFish")
+              (is (= 42 (.-someProp (.getChildAt &init-one-fish 1)))
+                  "new child has correct prop")))
 
-          (testing "middle child of multiple children")
-          (testing "last child of multiple children"))
+          (testing "middle child of multiple children"
+           (let [gen-desc {:generate (fn [{count :count} _ _]
+                                        (one-fish {}
+                                          (red-fish {})
+                                          (when (= 0 count) (blue-fish {}))
+                                          (one-fish {:some-prop 42})))}
+                  reified-gen (rekt/reify-generator
+                                (vt/generator gen-desc {:count 0}))
+                  &init-one-fish (rekt/&o-tree reified-gen)
+                  &init-blue-fish (.getChildAt &init-one-fish 1)
+                  regenerated-gen (rekt/regenerate
+                                    reified-gen
+                                    (vt/generator gen-desc {:count 1}))
+                  &regen-one-fish (rekt/&o-tree regenerated-gen)]
+              (is (= &init-one-fish &regen-one-fish)
+                  "Parent object is the same")
+              (is (= 2 (count (.getChildren &init-one-fish)))
+                  "Parent now has two children")
+              (is (= true (.isDestroyed &init-blue-fish))
+                  "prev first child was destroyed")
+              (is (instance? classes/RedFish (.getChildAt &init-one-fish 0))
+                  "new first child is a RedFish")
+              (is (instance? classes/OneFish (.getChildAt &init-one-fish 1))
+                  "new second child is a OneFish")
+              (is (= 42 (.-someProp (.getChildAt &init-one-fish 1)))
+                  "new child has correct prop")))
+
+          (testing "last child of multiple children"
+            (let [gen-desc {:generate (fn [{count :count} _ _]
+                                        (one-fish {}
+                                          (red-fish {})
+                                          (one-fish {:some-prop 42})
+                                          (when (= 0 count) (blue-fish {}))))}
+                  reified-gen (rekt/reify-generator
+                                (vt/generator gen-desc {:count 0}))
+                  &init-one-fish (rekt/&o-tree reified-gen)
+                  &init-blue-fish (.getChildAt &init-one-fish 2)
+                  regenerated-gen (rekt/regenerate
+                                    reified-gen
+                                    (vt/generator gen-desc {:count 1}))
+                  &regen-one-fish (rekt/&o-tree regenerated-gen)]
+              (is (= &init-one-fish &regen-one-fish)
+                  "Parent object is the same")
+              (is (= 2 (count (.getChildren &init-one-fish)))
+                  "Parent now has two children")
+              (is (= true (.isDestroyed &init-blue-fish))
+                  "prev first child was destroyed")
+              (is (instance? classes/RedFish (.getChildAt &init-one-fish 0))
+                  "new first child is a RedFish")
+              (is (instance? classes/OneFish (.getChildAt &init-one-fish 1))
+                  "new second child is a OneFish")
+              (is (= 42 (.-someProp (.getChildAt &init-one-fish 1)))
+                  "new child has correct prop"))))
 
         (testing "from o-tree of nested generator"
           (testing "when generator is only child")
@@ -1122,7 +1176,13 @@
 
         (testing "lifecycle functions are called in order with correct props"
           (testing "on a single generator")
-          (testing "on a nested generator")))
+          (testing "on a nested generator"))
+
+        (testing "when generator's o-tree is nil then creates a child"
+          (testing "when generator is only node")
+          (testing "when child generator is first of multiple children")
+          (testing "when child generator is middle child of multiple children")
+          (testing "when child generator is last child of multiple children")))
 
 
     (testing "remove o-tree"
