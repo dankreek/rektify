@@ -1,12 +1,2 @@
-/* some sthtyle */
-@font-face {
-    font-family: glass-tty-vt220;
-    src: url(/fonts/Glass_TTY_VT220.ttf);
-}
-
-body {
-  background-color: black;
-  color: #ffcc00;
-  font-family: glass-tty-vt220;
-}
+/* some style */
 

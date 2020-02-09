@@ -1,7 +1,6 @@
 (ns rektify.object-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
             [test.classes-test :as classes]
-            [goog.object :as object]
             [rektify.object :as o]))
 
 
@@ -10,7 +9,7 @@
     (let [one-fish (new classes/OneFish)
           red-fish (new classes/RedFish)]
       (.addChild one-fish red-fish)
-      (= one-fish (o/parent classes/one-fish-desc one-fish)))))
+      (is (= one-fish (o/parent classes/red-fish-desc red-fish))))))
 
 
 (deftest children
@@ -20,8 +19,8 @@
           second-child (new classes/OneFish)]
       (.addChild one-fish first-child)
       (.addChild one-fish second-child)
-      (= [first-child second-child]
-         (o/children classes/one-fish-desc one-fish)))))
+      (is (= [first-child second-child]
+             (js->clj (o/children classes/one-fish-desc one-fish)))))))
 
 
 (deftest add-child!

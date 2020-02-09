@@ -15,12 +15,11 @@
   * `:constructor` A reference to the JavaScript constructor function which will
     create the object being described.
 
-  * `:destructor` _(optional)_ a function which is called on an object when it
+  * `:destructor` function which is called on an object when it
     is being destroyed. The function will have the signature `[obj-desc obj&]`
     where `obj-desc` is the object description map for the object, and `obj&`
     which is a reference to the object being destroyed. The `:destructor`
-    function should destroy all of its children as well as remove itself from
-    its parent, if a parent exists.
+    function should also destroy all of its children.
 
   * `:constructor-list` _(optional)_ the list of constructor signatures which
     can be used to instantiate the object being described.
@@ -103,14 +102,14 @@
     :remove-child-at
     :get-children
     :constructor
+    :destructor
     :prop-map})
 
 
 (def ^:private optional-obj-desc-keys
   #{:default-props
     :constructor-list
-    :post-constructor
-    :destructor})
+    :post-constructor})
 
 
 (def ^:no-doc valid-obj-desc-keys
@@ -235,7 +234,7 @@
   remove itself from its parent, if a parent exists."
   [obj-desc obj& ]
   (when-let [destructor-fn (:destructor obj-desc)]
-    (destructor-fn obj-desc obj&)))
+    (destructor-fn obj&)))
 
 
 (defn prop

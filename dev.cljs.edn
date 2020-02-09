@@ -1,0 +1,6 @@
+^{:watch-dirs ["test" "src"]
+  :css-dirs ["resources/public/css"]
+  :auto-testing true
+  :open-url "http://[[server-hostname]]:[[server-port]]/test.html"
+  }
+{:main rektify.core}

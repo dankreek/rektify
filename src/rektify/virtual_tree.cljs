@@ -1,4 +1,5 @@
 (ns rektify.virtual-tree
+  ;; XXX: Docs need updating pretty bad
   "
   # Virtual tree query, creation and manipulation for Rektify.
 
@@ -33,7 +34,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private
 
-(def ^:private gen-key ::generator)
 (def ^:private obj-key ::object)
 
 (def ^:private type-index 0)
@@ -47,7 +47,8 @@
 
 
 (defn object
-  "Return an object virtual node"
+  "Return an object virtual node, given an object descriptor and optionally
+  its properties and a list of children."
   ([obj-desc]
     (object obj-desc nil))
   ([obj-desc props]
@@ -62,22 +63,6 @@
    [obj-key obj-desc props children]))
 
 
-(defn generator
-  "Return a generator virtual node"
-  ([gen-desc]
-    (generator gen-desc nil))
-  ([gen-desc props]
-    (generator gen-desc props nil))
-  ([gen-desc props children]
-   (assert (map? gen-desc)
-           "gen-desc must be a map")
-   (assert (or (nil? props) (map? props))
-           "props must be a map or nil")
-   (assert (or (nil? children) (sequential? children))
-           "children must be sequential or nil")
-   [gen-key gen-desc props children]))
-
-
 (defn node?
   "Is `virtual-node` a valid virtual node?"
   [v-node]
@@ -86,7 +71,7 @@
           desc (get v-node desc-index)
           props (get v-node props-index)
           children (get v-node children-index)]
-      (and (or (= obj-key type) (= gen-key type))
+      (and (= obj-key type)
            (map? desc)
            (or (nil? props) (map? props))
            (or (nil? children) (sequential? children))))
@@ -97,12 +82,6 @@
   "Does this virtual node represent an object?"
   [v-node]
   (= obj-key (get v-node type-index)))
-
-
-(defn generator?
-  "Does this virtual node represent a generator?"
-  [v-node]
-  (= gen-key (get v-node type-index)))
 
 
 (defn props

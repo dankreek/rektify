@@ -1,7 +1,7 @@
 (ns test.classes-test
   "Functions for creating test class virtual nodes as well as test to ensure
   the JS test classes work in addition to the object description maps."
-  (:require [clojure.test  :refer-macros [deftest is testing run-tests]]
+  (:require [clojure.test :refer-macros [deftest is testing run-tests]]
             [test.classes :as classes]
             [clojure.zip :as z]
             [goog.object :as object]))
@@ -49,7 +49,7 @@
   (.getChildren obj))
 
 
-(defn destroy [obj-desc obj]
+(defn destroy [obj]
   (.destroy obj))
 
 
@@ -76,12 +76,7 @@
    :destructor destroy
    :replace-child replace-child
    :remove-child remove-child
-   :child-index child-index
-
-   ;; Not used by rektify yet
-   ;:replace-child-at replace-child-at
-   ;:remove-child-at remove-child-at
-   })
+   :child-index child-index})
 
 
 (def one-fish-desc
@@ -141,6 +136,7 @@
         f1 (new classes/Fish)
         f2 (new classes/Fish)]
 
+
     (testing "add and remove children by index"
       (is (= 0 (count (.getChildren f0))))
       (is (nil? (.getParent f1)))
@@ -156,6 +152,7 @@
       (.removeChildAt f0 0)
       (is (= 0 (count (.getChildren f0))))))
 
+
   (testing "replace a child at index"
     (let [f0 (new classes/Fish)
           f1 (new classes/Fish)
@@ -166,6 +163,7 @@
       (is (= f2 (.getChildAt f0 0)))
       (.replaceChildAt f0 f2 1)
       (is (= f2 (.getChildAt f0 1)))))
+
 
   (testing "replace a child by reference"
     (let [f0 (new classes/Fish)
@@ -179,10 +177,12 @@
       (.replaceChild f0 f2 f1)
       (is (= f1 (.getChildAt f0 1)))))
 
+
   (testing "destroying an object sets the destroyed flag"
     (let [f0 (new classes/Fish)]
       (.destroy f0)
       (is (= true (.isDestroyed f0)))))
+
 
   (testing "destroying a tree sets the destroyed flag on all objects"
     (let [f0 (new classes/Fish)
@@ -206,7 +206,7 @@
 ;; utility functions
 
 (defn fish-zip
-  "Create a zipper over a tree of PixiJS objects."
+  "Create a zipper over a tree of test objects."
   [head-object]
   (z/zipper (constantly true)
             (fn [o] (seq (.getChildren o)))
