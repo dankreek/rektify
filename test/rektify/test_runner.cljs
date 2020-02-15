@@ -3,7 +3,6 @@
             [test.classes-test]
             [rektify.object-test]
             [rektify.virtual-tree-test]
-            [rektify.rektify-test]
             [figwheel.main.testing :refer [run-tests]]))
 
 

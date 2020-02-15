@@ -312,23 +312,28 @@
   existed in `prev-props` but no longer exists, then the default values
   described in `obj-desc` will be set on the object."
   [obj-desc obj& props prev-props]
-  (let [prop-map (get obj-desc :prop-map)]
-    ;; Set all new props
-    (loop [set-props props]
-      (if-let [[key val] (first set-props)]
-        (let [prev-val (get prev-props key)]
-          ;; Don't call the setter if the value is the same as previously set
-          (when (not= val prev-val)
-            (set-prop! prop-map obj& key val))
-          (recur (rest set-props)))))
-    ;; Set defaults for any props that are no longer set
-    (loop [prev-keys (keys prev-props)]
-      (if-let [key (first prev-keys)]
-        (let [prev-val (get prev-props key)]
-          (when (not (contains? props key))
-            (set-default-prop! obj-desc obj& key))
-          (recur (rest prev-keys)))))
-    obj&))
+  ;; If props haven't changed, don't do anything
+  (when (not= props prev-props)
+    (let [prop-map (get obj-desc :prop-map)]
+      ;; Set all new props
+      (loop [set-props props]
+        (if-let [[key val] (first set-props)]
+          (let [prev-val (get prev-props key)]
+            ;; Don't call the setter if the value is the same as previously set
+            ;; XXX: Call setter no matter set, let the setter itself decide if it needs to perform an operation
+            (when (not= val prev-val)
+              ;; XXX: Pass in prev-val to the set-prop! call
+              (set-prop! prop-map obj& key val))
+            (recur (rest set-props)))))
+      ;; Set defaults for any props that are no longer set
+      (loop [prev-keys (keys prev-props)]
+        (if-let [key (first prev-keys)]
+          (let [prev-val (get prev-props key)]
+            (when (not (contains? props key))
+              ;; XXX: Pass in the prev-val to set-default-prop!
+              (set-default-prop! obj-desc obj& key))
+            (recur (rest prev-keys)))))))
+  obj&)
 
 
 (defn construct-obj!
