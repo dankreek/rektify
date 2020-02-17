@@ -1,8 +1,8 @@
 (ns rektify.object-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
-            [test.classes-test :as classes]
-            [rektify.object :as o]))
-
+             [test.classes-test :as classes]
+             [goog.object :as object]
+             [rektify.object :as o]))
 
 (deftest parent
   (testing "return a reference to the parent using :get-parent"
@@ -91,7 +91,7 @@
       (is (= "something" (o/prop classes/one-fish-desc one-fish :some-prop))))
 
     (testing "Throws an error if an invalid prop is requested"
-      (is (thrown-with-msg?
+      (is (thrown?
             js/Error
             #"There is no definition for the property :invalid"
             (o/prop classes/one-fish-desc one-fish :invalid)))))
@@ -143,7 +143,18 @@
       (is (= "in the way she moves"
              (o/prop classes/one-fish-desc one-fish :some-prop)))
       (is (= "attracts me like no other"
-             (o/prop classes/one-fish-desc one-fish :optional))))))
+             (o/prop classes/one-fish-desc one-fish :optional)))))
+
+  (testing "Setting map of props with previous values"
+    (let [test-setter (fn [obj& prop val prev-val]
+                        (is (= prev-val "testval"))
+                        (object/set obj& prop val))
+          new-desc (assoc-in classes/one-fish-desc
+                             [:prop-map :some-prop :setter] test-setter)
+          one-fish (new classes/OneFish)]
+      (o/set-props! classes/one-fish-desc one-fish {:some-prop "testval"})
+      (o/set-props! new-desc one-fish
+                    {:some-prop "doodoo"} {:some-prop "testval"}))))
 
 
 (deftest set-default-prop!

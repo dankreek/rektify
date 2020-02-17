@@ -1,9 +1,9 @@
 (ns rektify.virtual-tree-test
   (:require [cljs.test :refer-macros [deftest is testing run-tests]]
-            [test.classes-test :as classes :refer [fish-zip]]
-            [clojure.zip :as z]
-            [rektify.virtual-tree :as vt :refer [v-tree-zip]]
-            [rektify.object :as o]))
+             [test.classes-test :as classes :refer [fish-zip]]
+             [clojure.zip :as z]
+             [rektify.virtual-tree :as vt :refer [v-tree-zip]]
+             [rektify.object :as o]))
 
 
 (deftest v-node-create-and-test

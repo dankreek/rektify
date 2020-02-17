@@ -273,37 +273,42 @@
   And optional previous value can be supplied which will allow the setter to
   determine if it should actually go through the work of setting the property if
   the value didn't change."
-  [prop-map obj& prop val]
-  (let [setter! (get-in prop-map [prop :setter])
-        obj-prop (get-in prop-map [prop :property])]
-    (if setter!
-      (setter! obj& obj-prop val)
-      (throw (js/Error. (str "No :setter found for property " prop))))))
+  ([prop-map obj& prop val]
+   (set-prop! prop-map obj& prop val nil))
+  ([prop-map obj& prop val prev-val]
+   (let [setter! (get-in prop-map [prop :setter])
+         obj-prop (get-in prop-map [prop :property])]
+     (if setter!
+       (setter! obj& obj-prop val prev-val)
+       (throw (js/Error. (str "No :setter found for property " prop)))))))
 
 
 (defn set-props!
   "Using the setters in the `obj-desc`, set all the properties in `props` on the
   object."
-  [obj-desc obj& props]
-  (let [prop-map (get obj-desc :prop-map)]
-    (loop [set-props props]
-      (if-let [[prop val] (first set-props)]
-        (do (set-prop! prop-map obj& prop val)
-            (recur (rest set-props)))
-        obj&))))
+  ([obj-desc obj& props]
+   (set-props! obj-desc obj& props nil))
+  ([obj-desc obj& props prev-props]
+   (let [prop-map (get obj-desc :prop-map)]
+     (loop [set-props props]
+       (if-let [[prop val] (first set-props)]
+         (do (set-prop! prop-map obj& prop val (get prev-props prop))
+             (recur (rest set-props)))
+         obj&)))))
 
 
 (defn set-default-prop!
   "Set the default value of the property on the object given a map of default
    values"
-  [obj-desc obj& prop]
-  (let [default-val (get-in obj-desc [:default-props prop])]
-    (if (some? default-val)
-      (set-prop! (:prop-map obj-desc) obj& prop default-val)
-      (throw
-        (js/Error.
-          (str "The property " prop " does not have a default value set and must be "
-               "explicitly specified"))))))
+  ([obj-desc obj& prop]
+   (set-default-prop! obj-desc obj& prop nil))
+  ([obj-desc obj& prop prev-val]
+   (let [default-val (get-in obj-desc [:default-props prop])]
+     (if (some? default-val)
+       (set-prop! (:prop-map obj-desc) obj& prop default-val prev-val)
+       (throw
+         (js/Error.
+           (str "The property " prop " does not have a default value set and must be explicitly specified")))))))
 
 
 (defn update-props!
@@ -319,19 +324,14 @@
       (loop [set-props props]
         (if-let [[key val] (first set-props)]
           (let [prev-val (get prev-props key)]
-            ;; Don't call the setter if the value is the same as previously set
-            ;; XXX: Call setter no matter set, let the setter itself decide if it needs to perform an operation
-            (when (not= val prev-val)
-              ;; XXX: Pass in prev-val to the set-prop! call
-              (set-prop! prop-map obj& key val))
+            (set-prop! prop-map obj& key val prev-val)
             (recur (rest set-props)))))
       ;; Set defaults for any props that are no longer set
       (loop [prev-keys (keys prev-props)]
         (if-let [key (first prev-keys)]
           (let [prev-val (get prev-props key)]
             (when (not (contains? props key))
-              ;; XXX: Pass in the prev-val to set-default-prop!
-              (set-default-prop! obj-desc obj& key))
+              (set-default-prop! obj-desc obj& key prev-val))
             (recur (rest prev-keys)))))))
   obj&)
 
