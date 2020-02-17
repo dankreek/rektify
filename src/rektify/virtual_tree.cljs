@@ -49,9 +49,9 @@
    (assert (map? obj-desc)
            "obj-desc must be a map")
    (assert (map? props)
-           "props must be a map or nil")
+           "props must be a map")
    (assert (sequential? children)
-           "children must be sequential or nil")
+           "children must be sequential")
    {:rektify/type ::v-node
     ::desc obj-desc
     ::props props
