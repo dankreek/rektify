@@ -7,7 +7,7 @@
   a virtual tree node is a map with 4 keys:
 
   ```clojure
-  {::type ::v-node
+  {:rektify/type ::v-node
    ::desc {}
    ::props {}
    ::children []}
@@ -52,7 +52,7 @@
            "props must be a map or nil")
    (assert (sequential? children)
            "children must be sequential or nil")
-   {::type ::v-node
+   {:rektify/type ::v-node
     ::desc obj-desc
     ::props props
     ::children children}))
@@ -61,7 +61,7 @@
   "Is a valid virtual tree node?"
   [v-node]
   (if (map? v-node)
-    (and (= ::v-node (::type v-node))
+    (and (= ::v-node (:rektify/type v-node))
          (map? (::desc v-node))
          (map? (::props v-node))
          (sequential? (::children v-node)))
