@@ -4,3 +4,4 @@
   :open-url "http://[[server-hostname]]:[[server-port]]/test.html"
   }
 {:main rektify.core}
+

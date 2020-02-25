@@ -1,5 +1,5 @@
 (ns rektify.virtual-tree-test
-  (:require [cljs.test :refer-macros [deftest is testing run-tests]]
+  (:require [cljs.test :refer-macros [deftest is testing]]
              [test.classes-test :as classes :refer [fish-zip]]
              [clojure.zip :as z]
              [rektify.virtual-tree :as vt :refer [v-tree-zip]]
